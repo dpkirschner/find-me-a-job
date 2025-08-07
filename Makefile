@@ -1,4 +1,4 @@
-.PHONY: dev-server lint format check test
+.PHONY: dev-server lint format check test validation
 
 dev-server:
 	uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
@@ -14,3 +14,6 @@ check:
 
 test:
 	pytest
+
+validate: format lint test
+	@echo "✅ All validation checks passed!"
