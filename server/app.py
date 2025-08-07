@@ -52,4 +52,4 @@ async def chat(request: ChatRequest):
             yield event
 
     # Use text/event-stream with SSE via EventSourceResponse
-    return EventSourceResponse(event_generator()) 
+    return EventSourceResponse(event_generator())

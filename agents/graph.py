@@ -1,6 +1,7 @@
 from typing import TypedDict
-from langgraph.graph import StateGraph, START, END
+
 from langchain_community.chat_models import ChatOllama
+from langgraph.graph import END, START, StateGraph
 
 
 class State(TypedDict):
@@ -11,9 +12,9 @@ class State(TypedDict):
 def llm_node(state: State) -> State:
     """Node that uses ChatOllama to generate a reply to the input message."""
     llm = ChatOllama(model="gpt-oss")  # Default model, can be configured
-    
+
     response = llm.invoke([{"role": "user", "content": state["message"]}])
-    
+
     return {"reply": response.content}
 
 

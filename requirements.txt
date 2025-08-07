@@ -7,3 +7,4 @@ pydantic
 sse-starlette
 httpx
 pytest
+ruff
