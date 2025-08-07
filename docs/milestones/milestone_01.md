@@ -58,7 +58,7 @@ Setup and Tasks (junior-friendly)
   - Enables CORS for `http://localhost:3000`
   - Exposes `GET /healthz` returning `{ status: "ok" }`
   - Exposes `POST /chat` which accepts `{ message: string }`
-  - Implements streaming response using `EventSourceResponse` (SSE) or a streaming generator
+  - Implements streaming response using `EventSourceResponse` (SSE)
   - Returns tokens as they arrive and a final `[DONE]` event
 - Add a `make dev-server` or `task` script to run: `uvicorn server.app:app --reload --host 0.0.0.0 --port 8000`
 - Manual test with `curl` (non-streamed smoke):
