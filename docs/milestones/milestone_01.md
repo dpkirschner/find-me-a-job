@@ -60,7 +60,7 @@ Setup and Tasks (junior-friendly)
   - Exposes `POST /chat` which accepts `{ message: string }`
   - Implements streaming response using `EventSourceResponse` (SSE)
   - Returns tokens as they arrive and a final `[DONE]` event
-- Add a `make dev-server` or `task` script to run: `uvicorn server.app:app --reload --host 0.0.0.0 --port 8000`
+- Add a `make dev-server` script to run: `uvicorn server.app:app --reload --host 0.0.0.0 --port 8000`
 - Manual test with `curl` (non-streamed smoke):
   - `curl -X POST http://localhost:8000/chat -H 'Content-Type: application/json' -d '{"message":"Hello"}'`
 

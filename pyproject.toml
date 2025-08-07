@@ -2,12 +2,16 @@
 requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+include = ["agents*", "server*"]
+exclude = ["tests*"]
+
 [project]
 name = "find-me-a-job"
 version = "0.1.0"
 description = "An agent orchestrator for job searching activities"
 authors = [{name = "Daniel Kirschner", email = "dpkirschner@gmail.com"}]
-license = {text = "MIT"}
+license = "MIT"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
@@ -24,6 +28,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest",
+    "pytest-asyncio",  # For async test support
     "ruff",
 ]
 

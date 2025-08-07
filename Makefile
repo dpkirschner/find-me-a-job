@@ -13,7 +13,7 @@ check:
 	ruff check . --fix
 
 test:
-	pytest
+	python -m pytest
 
 validate: format lint test
 	@echo "✅ All validation checks passed!"
