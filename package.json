@@ -1,0 +1,33 @@
+{
+  "name": "find-me-a-job",
+  "version": "0.1.0",
+  "description": "An AI-powered job search orchestrator using collaborative multi-agent systems",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"make dev-backend\" \"make dev-frontend\"",
+    "dev:frontend": "make dev-frontend",
+    "dev:backend": "make dev-backend",
+    "build": "npm run build --workspace=frontend",
+    "test": "npm run test --workspace=frontend",
+    "test:backend": "make test",
+    "lint": "npm run lint --workspace=frontend && make lint",
+    "format": "make format",
+    "validate": "make validate"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-username/find-me-a-job.git"
+  },
+  "author": "Daniel Kirschner <dpkirschner@gmail.com>",
+  "license": "MIT"
+}

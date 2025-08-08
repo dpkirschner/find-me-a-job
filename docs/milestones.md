@@ -9,7 +9,7 @@ This approach focuses on building a thin "vertical slice" of the application fir
 
 **Key Tasks:**
 1.  **Setup Ollama:** Install Ollama and pull the `llama3.1:8b` model.
-2.  **Basic FastAPI Server:** Create a `server/app.py` with a single `/chat` endpoint. This endpoint will receive a user message.
+2.  **Basic FastAPI Server:** Create a `backend/app.py` with a single `/chat` endpoint. This endpoint will receive a user message.
 3.  **Simple LangGraph Agent:** In `agents/graph.py`, create a basic graph for one agent (e.g., `researcher`). For now, it doesn't need any tools. It just takes the chat history and generates the next response using `ChatOllama`.
 4.  **Minimal Next.js UI:** Create a `ui/` app with a single page. It should have a text input and a display area. When you send a message, it hits your `/chat` endpoint and displays the streamed response.
 

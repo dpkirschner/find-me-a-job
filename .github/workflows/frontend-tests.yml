@@ -3,10 +3,10 @@ name: UI Tests
 on:
   push:
     paths:
-      - 'ui/**'
+      - 'frontend/**'
   pull_request:
     paths:
-      - 'ui/**'
+      - 'frontend/**'
 
 jobs:
   ui-tests:
@@ -14,7 +14,7 @@ jobs:
     
     defaults:
       run:
-        working-directory: ./ui
+        working-directory: ./frontend
     
     steps:
       - name: Checkout repository
@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: './ui/package-lock.json'
+          cache-dependency-path: './frontend/package-lock.json'
           
       - name: Install dependencies
         run: npm ci
@@ -43,7 +43,7 @@ jobs:
         uses: codecov/codecov-action@v4
         if: success()
         with:
-          file: ./ui/coverage/lcov.info
+          file: ./frontend/coverage/lcov.info
           flags: ui-tests
           name: ui-coverage
           fail_ci_if_error: false

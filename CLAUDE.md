@@ -9,14 +9,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Technology Stack
 
 ### Backend (Python)
-- **FastAPI** - High-performance API server (`server/app.py`)
+- **FastAPI** - High-performance API server (`backend/app.py`)
 - **LangGraph** - Agent orchestration and workflow management (`agents/graph.py`)
 - **LangChain Community** - LLM integrations (currently ChatOllama with gpt-oss model)
 - **Pydantic** - Data validation and serialization
 - **SSE-Starlette** - Server-sent events for real-time streaming
 
 ### Frontend (TypeScript/React)
-- **Next.js 15.4.6** - React framework with App Router
+- **Next.js 15.4.6** - React framework with App Router (`frontend/`)
 - **React 19.1.0** - Latest React with modern features
 - **TypeScript 5** - Type safety
 - **Tailwind CSS 4** - Styling system
@@ -31,21 +31,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 /
-├── agents/           # Agent logic and graph orchestration
-│   ├── __init__.py
-│   └── graph.py      # LangGraph implementation
-├── server/           # FastAPI backend
-│   └── app.py        # Main API server with /chat endpoint
-├── ui/               # Next.js frontend
+├── frontend/         # Next.js frontend application
 │   ├── app/
 │   │   ├── page.tsx  # Main chat interface
 │   │   ├── layout.tsx
-│   │   └── globals.css
+│   │   ├── globals.css
+│   │   └── __tests__ # Frontend tests
 │   ├── package.json
 │   └── tsconfig.json
-├── tests/            # Test suite
+├── backend/          # FastAPI backend service
+│   └── app.py        # Main API server with /chat endpoint
+├── agents/           # Agent logic and graph orchestration
+│   ├── __init__.py
+│   └── graph.py      # LangGraph implementation
+├── tests/            # Backend/integration tests
 │   ├── agents/
-│   └── server/
+│   └── backend/
 ├── docs/             # Project documentation
 ├── pyproject.toml    # Python project configuration
 ├── Makefile          # Build commands
@@ -96,7 +97,7 @@ make validate     # Run format, lint, and test
 - **Message persistence** - Client-side state management
 - **Stop generation** - User can abort long responses
 - **Control token handling** - Filters out `[DONE]` and similar control tokens
-- **Debug logging** - Comprehensive logging system (currently disabled in page.tsx:8-11)
+- **Debug logging** - Comprehensive logging system (currently disabled in frontend/app/page.tsx:8-11)
 
 ## Code Style & Conventions
 

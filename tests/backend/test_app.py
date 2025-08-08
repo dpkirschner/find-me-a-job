@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agents.graph import stream_graph_events
-from server.app import ChatRequest, app
+from backend.app import ChatRequest, app
 
 
 @pytest.fixture
@@ -76,7 +76,7 @@ class TestStreamGraphEvents:
 class TestChatEndpoint:
     """Tests for the /chat endpoint."""
 
-    @patch("server.app.stream_graph_events")
+    @patch("backend.app.stream_graph_events")
     def test_chat_endpoint_success(self, mock_stream_graph_events, client):
         """Test successful chat endpoint call."""
 
@@ -117,7 +117,7 @@ class TestChatEndpoint:
 
         assert response.status_code == 422  # Validation error
 
-    @patch("server.app.stream_graph_events")
+    @patch("backend.app.stream_graph_events")
     def test_chat_endpoint_returns_503_on_connection_error(
         self, mock_stream_graph_events, client
     ):

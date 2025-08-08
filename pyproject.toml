@@ -70,7 +70,7 @@ skip-magic-trailing-comma = false
 
 [tool.ruff.lint.isort]
 # Group imports by type
-known-first-party = ["agents", "server"]
+known-first-party = ["agents", "backend"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
