@@ -1,6 +1,7 @@
 # agents/graph.py
 
-from typing import AsyncGenerator, TypedDict
+from collections.abc import AsyncGenerator
+from typing import TypedDict
 
 import requests
 from langchain_community.chat_models import ChatOllama
