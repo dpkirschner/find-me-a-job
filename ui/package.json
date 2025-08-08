@@ -31,5 +31,9 @@
     "@testing-library/jest-dom": "^6",
     "@testing-library/user-event": "^14",
     "@types/jest": "^29"
+  },
+  "overrides": {
+    "inflight": "npm:@tootallnate/inflight@1",
+    "glob": "^10.3.10"
   }
 }
