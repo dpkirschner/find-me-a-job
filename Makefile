@@ -1,7 +1,10 @@
-.PHONY: dev-server lint format check test validation
+.PHONY: dev-server dev-frontend lint format check test validation
 
 dev-server:
 	uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
+
+dev-frontend:
+	cd ui && npm run dev
 
 lint:
 	ruff check .

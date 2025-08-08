@@ -73,12 +73,12 @@ Setup and Tasks (junior-friendly)
 - Error handling: If Ollama not running, return a clear 503-ish message
 
 5) Frontend scaffold (Next.js) [2–3h]
-- Create Next.js app in `ui/` (Router: App Router or Pages Router is fine)
+- Create Next.js app in `ui/` (Router: App Router is fine)
   - `npx create-next-app@latest ui --ts --eslint --use-npm`
 - Configure dev proxy or CORS
   - Option A: Keep backend on `http://localhost:8000` and enable CORS in FastAPI
   - Option B: Next.js API route as a proxy to FastAPI (optional)
-- Create a single page (e.g., `ui/app/page.tsx` or `ui/pages/index.tsx`) with:
+- Create a single page (e.g., `ui/app/page.tsx`) with:
   - Text input and Send button
   - A messages area for displaying the conversation (user + assistant)
   - When user submits, call `/chat` and display streamed tokens as they arrive
