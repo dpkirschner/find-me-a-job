@@ -1,7 +1,14 @@
-.PHONY: dev-backend dev-frontend lint format check test validation
+.PHONY: run dev-backend dev-frontend lint format check test validation
+
+run:
+	@echo "🚀 Starting backend and frontend..."
+	@trap 'kill %1 %2 2>/dev/null; exit' INT; \
+	uvicorn backend.app:app --reload --reload-dir backend --reload-dir agents --reload-dir utils --host 0.0.0.0 --port 8000 & \
+	cd frontend && npm run dev & \
+	wait
 
 dev-backend:
-	uvicorn backend.app:app --reload --host 0.0.0.0 --port 8000
+	uvicorn backend.app:app --reload --reload-dir backend --reload-dir agents --reload-dir utils --host 0.0.0.0 --port 8000
 
 dev-frontend:
 	cd frontend && npm run dev

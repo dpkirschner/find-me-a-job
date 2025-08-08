@@ -58,13 +58,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Start the development environment:
 ```bash
 # Backend server (port 8000)
-make dev-server
+make dev-backend
 
 # Frontend UI (port 3000)
 make dev-frontend
 
 # Full development setup
-make dev-server & make dev-frontend
+make dev-backend & make dev-frontend
 ```
 
 Code quality:
