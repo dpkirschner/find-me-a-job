@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from typing import TypedDict
 
 import requests
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 from langgraph.graph import END, START, StateGraph
 
 
