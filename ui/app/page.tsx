@@ -2,10 +2,43 @@
 
 import { useState, useRef, useEffect } from 'react';
 
+// Simple logger utility
+const logger = {
+  debug: (message: string, data?: any) => {
+    // Debug logging disabled - uncomment the lines below to re-enable
+    // if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    //   console.log(`[CHAT DEBUG] ${message}`, data || '');
+    // }
+  },
+  info: (message: string, data?: any) => {
+    if (typeof window !== 'undefined') {
+      console.log(`[CHAT INFO] ${message}`, data || '');
+    }
+  },
+  error: (message: string, error?: any) => {
+    if (typeof window !== 'undefined') {
+      console.error(`[CHAT ERROR] ${message}`, error || '');
+    }
+  }
+};
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
+
+// Control tokens that should not be displayed in the UI
+type ControlToken = '[DONE]';
+
+const CONTROL_TOKENS: readonly ControlToken[] = ['[DONE]'] as const;
+
+const isControlToken = (data: string): data is ControlToken => {
+  return CONTROL_TOKENS.some(token => data === token);
+};
+
+const containsControlToken = (data: string): boolean => {
+  return CONTROL_TOKENS.some(token => data.includes(token));
+};
 
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -45,6 +78,7 @@ export default function Chat() {
     abortControllerRef.current = controller;
 
     const userInput = input;
+    logger.info('Starting chat request', { userInput });
 
     // Change #1: Atomic state update
     const userMessage: Message = { role: 'user', content: userInput };
@@ -55,6 +89,7 @@ export default function Chat() {
     setIsLoading(true);
 
     try {
+      logger.debug('Sending POST request to /chat');
       const response = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -63,35 +98,64 @@ export default function Chat() {
       });
 
       if (!response.ok) {
+        logger.error('Response not OK', { status: response.status, statusText: response.statusText });
         // Change #2: Throw error with specific detail from API
         const errorData = await response.json();
         throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
       }
 
+      logger.debug('Response OK, starting to read stream');
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
 
       if (reader) {
+        let chunkCount = 0;
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            logger.debug('Stream reading completed');
+            break;
+          }
 
           const chunk = decoder.decode(value, { stream: true });
+          chunkCount++;
+          logger.debug(`Received chunk ${chunkCount}`, { chunkLength: chunk.length, chunk: chunk.substring(0, 100) + (chunk.length > 100 ? '...' : '') });
+          
           const lines = chunk.split('\n');
+          logger.debug(`Split into ${lines.length} lines`, { lines });
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (data === '[DONE]') break;
+              const data = line.slice(6);
+              logger.debug('Processing data line', { data, dataLength: data.length });
               
-              // Only append if data is not empty (avoids empty event lines)
-              if (data) {
+              if (isControlToken(data) || containsControlToken(data)) {
+                logger.info('Received control token signal', { token: data });
+                break;
+              }
+              
+              // Only append if data is not empty and doesn't contain control tokens
+              if (data && !containsControlToken(data)) {
+                logger.debug('Appending data to message', { data });
                 setMessages(prev => {
                   const newMessages = [...prev];
-                  newMessages[newMessages.length - 1].content += data;
+                  const lastMessage = newMessages[newMessages.length - 1];
+
+                  // Create a new object to ensure immutability
+                  const updatedLastMessage = {
+                    ...lastMessage,
+                    content: lastMessage.content + data,
+                  };
+                  
+                  newMessages[newMessages.length - 1] = updatedLastMessage;
+                  
                   return newMessages;
                 });
+              } else {
+                logger.debug('Skipping empty data');
               }
+            } else if (line.trim()) {
+              logger.debug('Ignoring non-data line', { line });
             }
             // Ignore 'event: message' lines and empty lines
           }
@@ -99,7 +163,7 @@ export default function Chat() {
       }
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
-        console.log('Fetch aborted by user.');
+        logger.info('Fetch aborted by user');
         setMessages(prev => {
           const newMessages = [...prev];
           newMessages[newMessages.length - 1].content += "\n\n(Request stopped)";
@@ -110,6 +174,7 @@ export default function Chat() {
 
       // Change #2: Display the specific error message
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+      logger.error('Chat request failed', { error, errorMessage });
       setMessages(prev => {
         const newMessages = [...prev];
         newMessages[newMessages.length - 1].content = errorMessage;
@@ -117,6 +182,7 @@ export default function Chat() {
       });
 
     } finally {
+      logger.debug('Chat request completed, cleaning up');
       setIsLoading(false);
       abortControllerRef.current = null;
     }
