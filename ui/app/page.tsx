@@ -110,7 +110,9 @@ export default function Chat() {
 
       if (reader) {
         let chunkCount = 0;
-        while (true) {
+        let shouldStop = false;
+        
+        while (true && !shouldStop) {
           const { done, value } = await reader.read();
           if (done) {
             logger.debug('Stream reading completed');
@@ -131,6 +133,7 @@ export default function Chat() {
               
               if (isControlToken(data) || containsControlToken(data)) {
                 logger.info('Received control token signal', { token: data });
+                shouldStop = true;
                 break;
               }
               
