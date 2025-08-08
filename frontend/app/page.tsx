@@ -90,11 +90,15 @@ export default function Chat() {
 
     try {
       logger.debug('Sending POST request to /chat');
-      const response = await fetch('/chat', {
+      const response = await fetch('http://localhost:8000/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+        },
         body: JSON.stringify({ message: userInput }),
         signal: controller.signal, // Change #3: Add AbortSignal to fetch
+        cache: 'no-store',
       });
 
       if (!response.ok) {

@@ -76,4 +76,10 @@ async def chat(request: ChatRequest):
         finally:
             logger.info(f"Event generator completed, total events: {event_count}")
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(
+        event_generator(),
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        }
+    )
