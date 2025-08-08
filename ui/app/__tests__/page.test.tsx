@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Chat from '../page'
 
@@ -11,8 +11,9 @@ global.fetch = mockFetch
 Element.prototype.scrollIntoView = jest.fn()
 
 // Mock TextDecoder and TextEncoder for streaming tests
-global.TextDecoder = global.TextDecoder || require('util').TextDecoder
-global.TextEncoder = global.TextEncoder || require('util').TextEncoder
+import { TextDecoder, TextEncoder } from 'util'
+global.TextDecoder = global.TextDecoder || TextDecoder
+global.TextEncoder = global.TextEncoder || TextEncoder
 
 // Mock ReadableStream for streaming responses
 class MockReadableStream {
@@ -257,7 +258,7 @@ describe('Chat Component', () => {
       signal: new AbortController().signal
     }
     
-    jest.spyOn(window, 'AbortController').mockImplementation(() => mockController as any)
+    jest.spyOn(window, 'AbortController').mockImplementation(() => mockController as AbortController)
     
     mockFetch.mockImplementation(() => new Promise(() => {}))
     

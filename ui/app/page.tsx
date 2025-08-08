@@ -4,18 +4,18 @@ import { useState, useRef, useEffect } from 'react';
 
 // Simple logger utility
 const logger = {
-  debug: (message: string, data?: any) => {
+  debug: (_message: string, _data?: unknown) => {
     // Debug logging disabled - uncomment the lines below to re-enable
     // if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    //   console.log(`[CHAT DEBUG] ${message}`, data || '');
+    //   console.log(`[CHAT DEBUG] ${_message}`, _data || '');
     // }
   },
-  info: (message: string, data?: any) => {
+  info: (message: string, data?: unknown) => {
     if (typeof window !== 'undefined') {
       console.log(`[CHAT INFO] ${message}`, data || '');
     }
   },
-  error: (message: string, error?: any) => {
+  error: (message: string, error?: unknown) => {
     if (typeof window !== 'undefined') {
       console.error(`[CHAT ERROR] ${message}`, error || '');
     }
@@ -233,7 +233,7 @@ export default function Chat() {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                handleSubmit(e as any);
+                handleSubmit(e as React.FormEvent);
               }
             }}
             placeholder="Type your message... (Shift+Enter for new line)"
