@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // Simple logger utility
 const logger = {
@@ -90,11 +92,10 @@ export default function Chat() {
 
     try {
       logger.debug('Sending POST request to /chat');
-      const response = await fetch('http://localhost:8000/chat', {
+      const response = await fetch('/chat', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
         },
         body: JSON.stringify({ message: userInput }),
         signal: controller.signal, // Change #3: Add AbortSignal to fetch
@@ -208,7 +209,44 @@ export default function Chat() {
         {messages.map((message, index) => (
           <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-xs lg:max-w-md xl:max-w-lg px-4 py-2 rounded-lg ${message.role === 'user' ? 'bg-blue-500 text-white' : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700'}`}>
-              <p className="whitespace-pre-wrap">{message.content}</p>
+              {message.role === 'assistant' ? (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    p: (props: any) => (
+                      <p className="whitespace-pre-wrap leading-relaxed" {...props} />
+                    ),
+                    a: (props: any) => (
+                      <a className="text-blue-600 underline" target="_blank" rel="noreferrer noopener" {...props} />
+                    ),
+                    pre: (props: any) => (
+                      <pre className="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-md p-3 overflow-x-auto" {...props} />
+                    ),
+                    code: (props: any) => (
+                      <code
+                        className={`${props.className || ''} ${props.inline ? 'bg-gray-100 dark:bg-gray-900 px-1 py-0.5 rounded' : ''}`}
+                        {...props}
+                      >
+                        {props.children}
+                      </code>
+                    ),
+                    ul: (props: any) => (
+                      <ul className="list-disc pl-5 space-y-1" {...props} />
+                    ),
+                    ol: (props: any) => (
+                      <ol className="list-decimal pl-5 space-y-1" {...props} />
+                    ),
+                    li: (props: any) => <li className="leading-relaxed" {...props} />,
+                    h1: (props: any) => <h1 className="text-xl font-bold mt-2 mb-1" {...props} />,
+                    h2: (props: any) => <h2 className="text-lg font-semibold mt-2 mb-1" {...props} />,
+                    h3: (props: any) => <h3 className="text-base font-semibold mt-2 mb-1" {...props} />,
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              ) : (
+                <p className="whitespace-pre-wrap">{message.content}</p>
+              )}
             </div>
           </div>
         ))}
