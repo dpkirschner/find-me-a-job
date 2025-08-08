@@ -1,11 +1,12 @@
-from typing import AsyncGenerator
+# main.py
 
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from agents.graph import run_graph
+from agents.graph import stream_graph_events
 
 
 class ChatRequest(BaseModel):
@@ -14,7 +15,6 @@ class ChatRequest(BaseModel):
 
 app = FastAPI(title="Find Me A Job API")
 
-# Configure CORS to allow the React dev server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -29,36 +29,23 @@ async def healthz():
     return {"status": "ok"}
 
 
-async def token_stream(user_message: str) -> AsyncGenerator[dict, None]:
-    """
-    Generate streaming tokens from the LLM response using the LangGraph.
-    """
-    if not user_message:
-        raise HTTPException(status_code=400, detail="message must not be empty")
-
-    try:
-        # Get the full response from the graph
-        llm_response = run_graph(user_message)
-        
-        # Split response into tokens for streaming
-        tokens = llm_response.split()
-        for token in tokens:
-            yield {"event": "message", "data": token + " "}
-        
-        # Final event to signal completion to the client
-        yield {"event": "done", "data": "[DONE]"}
-        
-    except Exception as e:
-        # Stream error message
-        yield {"event": "error", "data": f"Error generating response: {str(e)}"}
-        yield {"event": "done", "data": "[DONE]"}
-
-
 @app.post("/chat")
 async def chat(request: ChatRequest):
+    if not request.message:
+        raise HTTPException(status_code=400, detail="Message must not be empty")
+
+    streamer = stream_graph_events(request.message)
+
+    try:
+        first_event = await streamer.__anext__()
+    except StopAsyncIteration:
+        return EventSourceResponse(iter([]))
+    except (ConnectionError, requests.exceptions.ConnectionError):
+        raise HTTPException(status_code=503, detail="LLM service is unavailable")
+
     async def event_generator():
-        async for event in token_stream(request.message):
+        yield first_event
+        async for event in streamer:
             yield event
 
-    # Use text/event-stream with SSE via EventSourceResponse
     return EventSourceResponse(event_generator())

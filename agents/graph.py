@@ -1,34 +1,50 @@
-from typing import TypedDict
+# agents/graph.py
 
+from typing import AsyncGenerator, TypedDict
+
+import requests
 from langchain_community.chat_models import ChatOllama
 from langgraph.graph import END, START, StateGraph
 
 
-class State(TypedDict):
+class GraphState(TypedDict):
     message: str
     reply: str
 
 
-def llm_node(state: State) -> State:
-    """Node that uses ChatOllama to generate a reply to the input message."""
-    llm = ChatOllama(model="gpt-oss")  # Default model, can be configured
-
-    response = llm.invoke([{"role": "user", "content": state["message"]}])
-
+async def llm_node(state: GraphState) -> dict:
+    """Node that uses ChatOllama. The stream is tapped into by astream_events."""
+    llm = ChatOllama(model="gpt-oss")
+    response = await llm.ainvoke(state["message"])
     return {"reply": response.content}
 
 
-# Build the graph
-graph_builder = StateGraph(State)
+graph_builder = StateGraph(GraphState)
 graph_builder.add_node("llm_node", llm_node)
 graph_builder.add_edge(START, "llm_node")
 graph_builder.add_edge("llm_node", END)
 
-# Compile the graph
 graph = graph_builder.compile()
 
 
-def run_graph(input_message: str) -> str:
-    """Run the graph with an input message and return the reply."""
-    result = graph.invoke({"message": input_message})
-    return result["reply"]
+async def stream_graph_events(user_message: str) -> AsyncGenerator[dict, None]:
+    """
+    Runs the graph and streams back LLM tokens in the SSE format.
+    """
+    try:
+        async for event in graph.astream_events(
+            {"message": user_message}, version="v2"
+        ):
+            kind = event["event"]
+            if kind == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                if content := chunk.content:
+                    yield {"event": "message", "data": content}
+
+        yield {"event": "done", "data": "[DONE]"}
+
+    except requests.exceptions.ConnectionError:
+        raise
+    except Exception as e:
+        yield {"event": "error", "data": f"An error occurred: {e}"}
+        yield {"event": "done", "data": "[DONE]"}
