@@ -9,8 +9,7 @@ import rehypeRaw from 'rehype-raw';
 const logger = {
   debug: (message: string, data?: unknown) => {
     if (typeof window !== 'undefined') {
-      return;
-      // console.log(`[CHAT DEBUG] ${message}`, data || '');
+      console.log(`[CHAT DEBUG] ${message}`, data || '');
     }
   },
   info: (message: string, data?: unknown) => {
@@ -22,7 +21,7 @@ const logger = {
     if (typeof window !== 'undefined') {
       console.error(`[CHAT ERROR] ${message}`, error || '');
     }
-  }
+  },
 };
 
 interface Message {
@@ -210,7 +209,6 @@ export default function Chat() {
                     a: (props) => <a className="text-blue-500 underline hover:text-blue-400" target="_blank" rel="noreferrer noopener" {...props} />,
                     pre: (props) => <pre className="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-md p-3 my-2 overflow-x-auto" {...props} />,
                     code: ({ inline, className, children, ...props }) => {
-                      const match = /language-(\w+)/.exec(className || '');
                       return !inline ? (
                         <code className={`${className} rounded-md`} {...props}>{children}</code>
                       ) : (
