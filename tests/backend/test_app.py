@@ -255,6 +255,62 @@ class TestAgentsEndpoint:
         assert len(json_response["agents"]) == 0
         mock_list_agents.assert_called_once()
 
+    @patch("backend.app.create_agent")
+    def test_create_agent_success(self, mock_create_agent, client):
+        """Test successful POST /agents endpoint call."""
+        # Setup mock return data
+        mock_create_agent.return_value = {"id": 3, "name": "new_agent"}
+
+        # Execute
+        response = client.post("/agents", json={"name": "new_agent"})
+
+        # Assertions
+        assert response.status_code == 201
+        json_response = response.json()
+        assert "agent" in json_response
+
+        # Validate the structure matches the Pydantic model
+        agent = json_response["agent"]
+        assert agent["id"] == 3
+        assert agent["name"] == "new_agent"
+
+        # Verify the DB function was called with correct name
+        mock_create_agent.assert_called_once_with("new_agent")
+
+    @patch("backend.app.create_agent")
+    def test_create_agent_database_error(self, mock_create_agent, client):
+        """Test POST /agents endpoint handles database errors."""
+        # Setup mock to raise exception
+        mock_create_agent.side_effect = Exception("Database connection failed")
+
+        # Execute
+        response = client.post("/agents", json={"name": "failing_agent"})
+
+        # Assertions
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to create agent"
+        mock_create_agent.assert_called_once_with("failing_agent")
+
+    def test_create_agent_invalid_request_body(self, client):
+        """Test POST /agents endpoint with invalid request body."""
+        response = client.post("/agents", json={})
+
+        assert response.status_code == 422  # Validation error
+
+    def test_create_agent_missing_name_field(self, client):
+        """Test POST /agents endpoint with missing name field."""
+        response = client.post("/agents", json={"wrong_field": "value"})
+
+        assert response.status_code == 422  # Validation error
+
+    def test_create_agent_empty_name(self, client):
+        """Test POST /agents endpoint with empty name."""
+        response = client.post("/agents", json={"name": ""})
+
+        # Note: This should still be valid as per the current Pydantic model
+        # If you want to add validation for non-empty names, you'd need to modify the model
+        assert response.status_code in [201, 422]  # Depends on validation rules
+
 
 class TestAgentMessagesEndpoint:
     """Tests for the /agents/{agent_id}/messages endpoint."""

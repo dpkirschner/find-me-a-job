@@ -38,6 +38,17 @@ def list_agents() -> list[dict[str, Any]]:
         return [dict(row) for row in cursor.fetchall()]
 
 
+def create_agent(name: str) -> dict[str, Any]:
+    """Creates a new agent and returns the created agent data."""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "INSERT INTO agents (name) VALUES (?) RETURNING id, name, created_at",
+            (name,),
+        )
+        row = cursor.fetchone()
+        return dict(row)
+
+
 def ensure_seed_agents(names: list[str]):
     """Inserts a list of agent names if the agents table is empty."""
     with get_connection() as conn:

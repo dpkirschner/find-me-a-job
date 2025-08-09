@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from agents.graph import stream_graph_events
-from backend.db import initialize_database, list_agents, list_messages
+from backend.db import create_agent, initialize_database, list_agents, list_messages
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -37,6 +37,14 @@ class Message(BaseModel):
 
 class MessagesResponse(BaseModel):
     messages: list[Message]
+
+
+class CreateAgentRequest(BaseModel):
+    name: str
+
+
+class CreateAgentResponse(BaseModel):
+    agent: Agent
 
 
 app = FastAPI(title="Find Me A Job API")
@@ -71,6 +79,19 @@ async def get_agents():
     except Exception as e:
         logger.error(f"Error fetching agents: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch agents")
+
+
+@app.post("/agents", response_model=CreateAgentResponse, status_code=201)
+async def create_new_agent(request: CreateAgentRequest):
+    logger.debug(f"Agent creation requested with name: {request.name}")
+    try:
+        agent_data = create_agent(request.name)
+        agent = Agent(id=agent_data["id"], name=agent_data["name"])
+        logger.info(f"Created new agent with id {agent.id} and name '{agent.name}'")
+        return CreateAgentResponse(agent=agent)
+    except Exception as e:
+        logger.error(f"Error creating agent: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create agent")
 
 
 @app.get("/agents/{agent_id}/messages", response_model=MessagesResponse)
