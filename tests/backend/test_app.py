@@ -303,13 +303,21 @@ class TestAgentsEndpoint:
 
         assert response.status_code == 422  # Validation error
 
-    def test_create_agent_empty_name(self, client):
+    @patch("backend.app.create_agent")
+    def test_create_agent_empty_name(self, mock_create_agent, client):
         """Test POST /agents endpoint with empty name."""
+        # Setup mock return data - empty name should be allowed
+        mock_create_agent.return_value = {"id": 4, "name": ""}
+
         response = client.post("/agents", json={"name": ""})
 
         # Note: This should still be valid as per the current Pydantic model
         # If you want to add validation for non-empty names, you'd need to modify the model
-        assert response.status_code in [201, 422]  # Depends on validation rules
+        assert response.status_code == 201
+        json_response = response.json()
+        assert json_response["agent"]["id"] == 4
+        assert json_response["agent"]["name"] == ""
+        mock_create_agent.assert_called_once_with("")
 
 
 class TestAgentMessagesEndpoint:
