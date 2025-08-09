@@ -324,9 +324,13 @@ class TestAgentMessagesEndpoint:
     """Tests for the /agents/{agent_id}/messages endpoint."""
 
     @patch("backend.app.list_messages")
-    def test_get_agent_messages_success(self, mock_list_messages, client):
+    @patch("backend.app.agent_exists")
+    def test_get_agent_messages_success(
+        self, mock_agent_exists, mock_list_messages, client
+    ):
         """Test successful GET /agents/{agent_id}/messages endpoint call."""
         # Setup mock return data
+        mock_agent_exists.return_value = True  # Agent exists
         mock_list_messages.return_value = [
             {
                 "id": 1,
@@ -367,13 +371,18 @@ class TestAgentMessagesEndpoint:
         assert messages[1]["role"] == "assistant"
         assert messages[1]["content"] == "I'll help you find tech jobs"
 
-        # Verify the DB function was called with correct agent_id
+        # Verify the DB functions were called with correct agent_id
+        mock_agent_exists.assert_called_once_with(agent_id)
         mock_list_messages.assert_called_once_with(agent_id)
 
     @patch("backend.app.list_messages")
-    def test_get_agent_messages_database_error(self, mock_list_messages, client):
+    @patch("backend.app.agent_exists")
+    def test_get_agent_messages_database_error(
+        self, mock_agent_exists, mock_list_messages, client
+    ):
         """Test GET /agents/{agent_id}/messages endpoint handles database errors."""
         # Setup mock to raise exception
+        mock_agent_exists.return_value = True  # Agent exists
         mock_list_messages.side_effect = Exception("Database connection failed")
 
         # Execute
@@ -383,12 +392,17 @@ class TestAgentMessagesEndpoint:
         # Assertions
         assert response.status_code == 500
         assert response.json()["detail"] == "Failed to fetch messages"
+        mock_agent_exists.assert_called_once_with(agent_id)
         mock_list_messages.assert_called_once_with(agent_id)
 
     @patch("backend.app.list_messages")
-    def test_get_agent_messages_empty_list(self, mock_list_messages, client):
+    @patch("backend.app.agent_exists")
+    def test_get_agent_messages_empty_list(
+        self, mock_agent_exists, mock_list_messages, client
+    ):
         """Test GET /agents/{agent_id}/messages endpoint with no messages."""
         # Setup mock return data
+        mock_agent_exists.return_value = True  # Agent exists
         mock_list_messages.return_value = []
 
         # Execute
@@ -400,6 +414,7 @@ class TestAgentMessagesEndpoint:
         json_response = response.json()
         assert "messages" in json_response
         assert len(json_response["messages"]) == 0
+        mock_agent_exists.assert_called_once_with(agent_id)
         mock_list_messages.assert_called_once_with(agent_id)
 
     def test_get_agent_messages_invalid_agent_id(self, client):
@@ -409,3 +424,18 @@ class TestAgentMessagesEndpoint:
 
         # Assertions
         assert response.status_code == 422  # Validation error
+
+    @patch("backend.app.agent_exists")
+    def test_get_agent_messages_nonexistent_agent(self, mock_agent_exists, client):
+        """Test GET /agents/{agent_id}/messages endpoint with non-existent agent."""
+        # Setup mock to return False (agent doesn't exist)
+        mock_agent_exists.return_value = False
+
+        # Execute with valid integer but non-existent agent_id
+        response = client.get("/agents/999/messages")
+
+        # Assertions
+        assert response.status_code == 404
+        json_response = response.json()
+        assert json_response["detail"] == "Agent not found"
+        mock_agent_exists.assert_called_once_with(999)

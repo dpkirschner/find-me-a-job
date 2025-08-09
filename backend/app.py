@@ -8,7 +8,13 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from agents.graph import stream_graph_events
-from backend.db import create_agent, initialize_database, list_agents, list_messages
+from backend.db import (
+    agent_exists,
+    create_agent,
+    initialize_database,
+    list_agents,
+    list_messages,
+)
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -97,6 +103,12 @@ async def create_new_agent(request: CreateAgentRequest):
 @app.get("/agents/{agent_id}/messages", response_model=MessagesResponse)
 async def get_agent_messages(agent_id: int):
     logger.debug(f"Messages requested for agent {agent_id}")
+
+    # Check if agent exists first
+    if not agent_exists(agent_id):
+        logger.warning(f"Agent {agent_id} not found")
+        raise HTTPException(status_code=404, detail="Agent not found")
+
     try:
         messages_data = list_messages(agent_id)
         messages = [

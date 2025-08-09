@@ -38,6 +38,13 @@ def list_agents() -> list[dict[str, Any]]:
         return [dict(row) for row in cursor.fetchall()]
 
 
+def agent_exists(agent_id: int) -> bool:
+    """Check if an agent exists."""
+    with get_connection() as conn:
+        cursor = conn.execute("SELECT 1 FROM agents WHERE id = ? LIMIT 1", (agent_id,))
+        return cursor.fetchone() is not None
+
+
 def create_agent(name: str) -> dict[str, Any]:
     """Creates a new agent and returns the created agent data."""
     with get_connection() as conn:
