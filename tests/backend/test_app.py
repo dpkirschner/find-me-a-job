@@ -192,3 +192,156 @@ class TestAppConfiguration:
         routes = [route.path for route in app.routes]
         assert "/chat" in routes
         assert "/healthz" in routes
+
+
+class TestAgentsEndpoint:
+    """Tests for the /agents endpoint."""
+
+    @patch("backend.app.list_agents")
+    def test_get_agents_success(self, mock_list_agents, client):
+        """Test successful GET /agents endpoint call."""
+        # Setup mock return data
+        mock_list_agents.return_value = [
+            {"id": 1, "name": "job_searcher"},
+            {"id": 2, "name": "resume_builder"},
+        ]
+
+        # Execute
+        response = client.get("/agents")
+
+        # Assertions
+        assert response.status_code == 200
+        json_response = response.json()
+        assert "agents" in json_response
+        assert len(json_response["agents"]) == 2
+
+        # Validate the structure matches the Pydantic model
+        agents = json_response["agents"]
+        assert agents[0]["id"] == 1
+        assert agents[0]["name"] == "job_searcher"
+        assert agents[1]["id"] == 2
+        assert agents[1]["name"] == "resume_builder"
+
+        # Verify the DB function was called
+        mock_list_agents.assert_called_once()
+
+    @patch("backend.app.list_agents")
+    def test_get_agents_database_error(self, mock_list_agents, client):
+        """Test GET /agents endpoint handles database errors."""
+        # Setup mock to raise exception
+        mock_list_agents.side_effect = Exception("Database connection failed")
+
+        # Execute
+        response = client.get("/agents")
+
+        # Assertions
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to fetch agents"
+        mock_list_agents.assert_called_once()
+
+    @patch("backend.app.list_agents")
+    def test_get_agents_empty_list(self, mock_list_agents, client):
+        """Test GET /agents endpoint with empty agent list."""
+        # Setup mock return data
+        mock_list_agents.return_value = []
+
+        # Execute
+        response = client.get("/agents")
+
+        # Assertions
+        assert response.status_code == 200
+        json_response = response.json()
+        assert "agents" in json_response
+        assert len(json_response["agents"]) == 0
+        mock_list_agents.assert_called_once()
+
+
+class TestAgentMessagesEndpoint:
+    """Tests for the /agents/{agent_id}/messages endpoint."""
+
+    @patch("backend.app.list_messages")
+    def test_get_agent_messages_success(self, mock_list_messages, client):
+        """Test successful GET /agents/{agent_id}/messages endpoint call."""
+        # Setup mock return data
+        mock_list_messages.return_value = [
+            {
+                "id": 1,
+                "agent_id": 1,
+                "role": "user",
+                "content": "Find me a job in tech",
+                "created_at": "2024-01-01T12:00:00",
+            },
+            {
+                "id": 2,
+                "agent_id": 1,
+                "role": "assistant",
+                "content": "I'll help you find tech jobs",
+                "created_at": "2024-01-01T12:01:00",
+            },
+        ]
+
+        # Execute
+        agent_id = 1
+        response = client.get(f"/agents/{agent_id}/messages")
+
+        # Assertions
+        assert response.status_code == 200
+        json_response = response.json()
+        assert "messages" in json_response
+        assert len(json_response["messages"]) == 2
+
+        # Validate the structure matches the Pydantic model
+        messages = json_response["messages"]
+        assert messages[0]["id"] == 1
+        assert messages[0]["agent_id"] == 1
+        assert messages[0]["role"] == "user"
+        assert messages[0]["content"] == "Find me a job in tech"
+        assert messages[0]["created_at"] == "2024-01-01T12:00:00"
+
+        assert messages[1]["id"] == 2
+        assert messages[1]["agent_id"] == 1
+        assert messages[1]["role"] == "assistant"
+        assert messages[1]["content"] == "I'll help you find tech jobs"
+
+        # Verify the DB function was called with correct agent_id
+        mock_list_messages.assert_called_once_with(agent_id)
+
+    @patch("backend.app.list_messages")
+    def test_get_agent_messages_database_error(self, mock_list_messages, client):
+        """Test GET /agents/{agent_id}/messages endpoint handles database errors."""
+        # Setup mock to raise exception
+        mock_list_messages.side_effect = Exception("Database connection failed")
+
+        # Execute
+        agent_id = 1
+        response = client.get(f"/agents/{agent_id}/messages")
+
+        # Assertions
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to fetch messages"
+        mock_list_messages.assert_called_once_with(agent_id)
+
+    @patch("backend.app.list_messages")
+    def test_get_agent_messages_empty_list(self, mock_list_messages, client):
+        """Test GET /agents/{agent_id}/messages endpoint with no messages."""
+        # Setup mock return data
+        mock_list_messages.return_value = []
+
+        # Execute
+        agent_id = 999
+        response = client.get(f"/agents/{agent_id}/messages")
+
+        # Assertions
+        assert response.status_code == 200
+        json_response = response.json()
+        assert "messages" in json_response
+        assert len(json_response["messages"]) == 0
+        mock_list_messages.assert_called_once_with(agent_id)
+
+    def test_get_agent_messages_invalid_agent_id(self, client):
+        """Test GET /agents/{agent_id}/messages endpoint with invalid agent_id."""
+        # Execute with non-integer agent_id
+        response = client.get("/agents/invalid/messages")
+
+        # Assertions
+        assert response.status_code == 422  # Validation error

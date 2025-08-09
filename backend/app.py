@@ -1,5 +1,6 @@
 # main.py
 
+
 import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +8,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from agents.graph import stream_graph_events
-from backend.db import initialize_database
+from backend.db import initialize_database, list_agents, list_messages
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -15,6 +16,27 @@ logger = get_logger(__name__)
 
 class ChatRequest(BaseModel):
     message: str
+
+
+class Agent(BaseModel):
+    id: int
+    name: str
+
+
+class AgentsResponse(BaseModel):
+    agents: list[Agent]
+
+
+class Message(BaseModel):
+    id: int
+    agent_id: int
+    role: str
+    content: str
+    created_at: str
+
+
+class MessagesResponse(BaseModel):
+    messages: list[Message]
 
 
 app = FastAPI(title="Find Me A Job API")
@@ -36,6 +58,41 @@ app.add_middleware(
 async def healthz():
     logger.debug("Health check requested")
     return {"status": "ok"}
+
+
+@app.get("/agents", response_model=AgentsResponse)
+async def get_agents():
+    logger.debug("Agents list requested")
+    try:
+        agents_data = list_agents()
+        agents = [Agent(id=agent["id"], name=agent["name"]) for agent in agents_data]
+        logger.info(f"Returning {len(agents)} agents")
+        return AgentsResponse(agents=agents)
+    except Exception as e:
+        logger.error(f"Error fetching agents: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch agents")
+
+
+@app.get("/agents/{agent_id}/messages", response_model=MessagesResponse)
+async def get_agent_messages(agent_id: int):
+    logger.debug(f"Messages requested for agent {agent_id}")
+    try:
+        messages_data = list_messages(agent_id)
+        messages = [
+            Message(
+                id=msg["id"],
+                agent_id=msg["agent_id"],
+                role=msg["role"],
+                content=msg["content"],
+                created_at=msg["created_at"],
+            )
+            for msg in messages_data
+        ]
+        logger.info(f"Returning {len(messages)} messages for agent {agent_id}")
+        return MessagesResponse(messages=messages)
+    except Exception as e:
+        logger.error(f"Error fetching messages for agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch messages")
 
 
 @app.post("/chat")
