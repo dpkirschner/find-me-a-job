@@ -1,0 +1,96 @@
+import React from 'react'
+import type { Agent } from '../types'
+import classNames from '../../../lib/classNames'
+
+export function HashIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...props} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M5 9h14M5 15h14M11 4 7 20M17 4l-4 16" />
+    </svg>
+  )
+}
+
+export interface SidebarItemProps {
+  label: string
+  active?: boolean
+  onClick?: () => void
+}
+
+export function SidebarItem({ label, active, onClick }: SidebarItemProps) {
+  return (
+    <button
+      onClick={onClick}
+      role="link"
+      aria-current={active ? 'page' : undefined}
+      className={classNames(
+        'w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
+        active ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-100' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+      )}
+    >
+      <HashIcon />
+      <span className="truncate">{label}</span>
+    </button>
+  )
+}
+
+export interface ConversationsSidebarProps {
+  agents: Agent[]
+  activeAgentId: number | null
+  setActiveAgentId: (id: number) => void
+  leftCollapsed: boolean
+  setLeftCollapsed: (v: boolean) => void
+}
+
+export function ChevronLeftIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...props} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  )
+}
+export function ChevronRightIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...props} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  )
+}
+
+export function ConversationsSidebar({ agents, activeAgentId, setActiveAgentId, leftCollapsed, setLeftCollapsed }: ConversationsSidebarProps) {
+  return (
+    <aside
+      className={classNames(
+        'hidden md:flex flex-col border-r transition-[width] duration-200 select-none',
+        leftCollapsed ? 'w-[60px]' : 'w-[280px]'
+      )}
+      aria-label="Conversations"
+    >
+      <div className="flex items-center justify-between gap-2 px-2 py-2 border-b">
+        <div className="flex items-center gap-2">
+          {/* icon placeholder to align text */}
+          <span className="inline-block w-4" />
+          {!leftCollapsed && <span className="font-medium">Conversations</span>}
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setLeftCollapsed(!leftCollapsed)}
+            aria-label={leftCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            {leftCollapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+          </button>
+        </div>
+      </div>
+      <nav className="p-2 space-y-1 overflow-y-auto" role="navigation" aria-label="Conversation list">
+        {agents.length === 0 && <div className="text-sm text-gray-500 px-2 py-4">No agents yet</div>}
+        {agents.map((a) => (
+          <SidebarItem key={a.id} label={a.name} active={a.id === activeAgentId || false} onClick={() => setActiveAgentId(a.id)} />
+        ))}
+      </nav>
+    </aside>
+  )
+}
+
+export default ConversationsSidebar
+
+
