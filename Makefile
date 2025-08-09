@@ -42,12 +42,12 @@ deps: ## Install all Python and frontend dependencies.
 run: ## Run frontend and backend servers concurrently for development.
 	@echo "🚀 Starting development servers (backend on :8000)..."
 	@trap 'echo "🛑 Stopping servers..."; kill 0' INT; \
-	uvicorn backend.app:app --reload --reload-dir $(BACKEND_SRC_DIRS) --host 0.0.0.0 --port 8000 & \
+	uvicorn backend.app:app --reload --reload-dir backend --reload-dir agents --reload-dir utils --host 0.0.0.0 --port 8000 & \
 	cd $(FRONTEND_DIR) && npm run dev & \
 	wait
 
 dev-backend: ## Run the backend server with hot-reloading.
-	@uvicorn backend.app:app --reload --reload-dir $(BACKEND_SRC_DIRS) --host 0.0.0.0 --port 8000
+	@uvicorn backend.app:app --reload --reload-dir backend --reload-dir agents --reload-dir utils --host 0.0.0.0 --port 8000
 
 dev-frontend: ## Run the frontend development server.
 	@cd $(FRONTEND_DIR) && npm run dev
