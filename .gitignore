@@ -269,3 +269,6 @@ logs
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# Local database and memory storage
+memory/

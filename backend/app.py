@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from agents.graph import stream_graph_events
+from backend.db import initialize_database
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -17,6 +18,10 @@ class ChatRequest(BaseModel):
 
 
 app = FastAPI(title="Find Me A Job API")
+
+# Initialize database on startup
+initialize_database()
+logger.info("Database initialized successfully")
 
 app.add_middleware(
     CORSMiddleware,

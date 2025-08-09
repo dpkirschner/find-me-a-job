@@ -21,7 +21,7 @@ Acceptance Criteria (Definition of Done)
 Directory Layout (additions)
 - `memory/db.sqlite` — SQLite database file (auto-created on first run)
 - `sql/0001_init.sql` — schema for `agents` and `messages` (optional but recommended)
-- `server/db.py` — connection + simple data access helpers
+- `backend/db.py` — connection + simple data access helpers
 
 Schema (minimal for Milestone 2)
 - Use a minimal schema that matches the milestone text. If you want to align with the broader spec in `docs/database.md`, you can later extend to `conversations`. For now, keep it simple:
@@ -60,7 +60,7 @@ Backend Tasks (FastAPI) [2–3h]
 - Continue using the venv from Milestone 1.
 - No extra package required to use SQLite (`sqlite3` is built-in). If preferred, you may add `SQLAlchemy` later.
 
-2) Create `server/db.py`
+2) Create `backend/db.py`
 - Provide: `get_connection()` that opens a SQLite connection to `memory/db.sqlite` with `check_same_thread=False`.
 - On startup, ensure `memory/` exists and run the SQL in `sql/0001_init.sql`.
 - Add helpers:
@@ -116,7 +116,7 @@ Manual QA [30–45m]
 
 Detailed Checklist
 - [ ] Create `memory/` directory and `sql/0001_init.sql`
-- [ ] Implement `server/db.py` with connection, init, and helpers
+- [ ] Implement `backend/db.py` with connection, init, and helpers
 - [ ] Seed default agents on startup if none exist
 - [ ] `GET /agents` endpoint returns agent list
 - [ ] `GET /agents/{id}/messages` returns ordered messages
