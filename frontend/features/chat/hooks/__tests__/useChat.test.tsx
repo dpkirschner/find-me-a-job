@@ -1,58 +1,354 @@
 import React from 'react'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
+import '@testing-library/jest-dom'
 import useChat from '../../hooks/useChat'
+import logger from '../../../../lib/logger'
+
+// Mock service dependencies
+const mockGetAgents = jest.fn()
+const mockGetMessages = jest.fn()
+const mockStreamChat = jest.fn()
 
 jest.mock('../../services/agentService', () => ({
   __esModule: true,
-  getAgents: jest.fn(async () => [{ id: 1, name: 'Agent A' }]),
-  getMessages: jest.fn(async () => [
-    { id: 1, agent_id: 1, role: 'user', content: 'hi', created_at: '2020-01-01T00:00:00Z' },
-  ]),
+  getAgents: (...args: any[]) => mockGetAgents(...args),
+  getMessages: (...args: any[]) => mockGetMessages(...args),
 }))
 
 jest.mock('../../services/chatService', () => ({
   __esModule: true,
-  streamChat: jest.fn(async ({ onToken }: any) => {
-    onToken('hello')
-  }),
+  streamChat: (...args: any[]) => mockStreamChat(...args),
 }))
 
 jest.mock('../../../../lib/logger', () => ({
   __esModule: true,
-  default: { debug: jest.fn(), info: jest.fn(), error: jest.fn() },
+  default: {
+    debug: jest.fn(),
+    info: jest.fn(),
+    error: jest.fn(),
+  },
 }))
 
 describe('useChat', () => {
-  test('loads agents and messages, streams tokens, and stop aborts', async () => {
-    const { result } = renderHook(() => useChat())
+  const defaultAgents = [
+    { id: 1, name: 'Agent A' },
+    { id: 2, name: 'Agent B' },
+  ]
 
-    // Wait for initial agents fetch microtasks
-    await act(async () => {})
-    expect(result.current.agents.length).toBe(1)
-    expect(result.current.activeAgentId).toBe(1)
+  const defaultMessages = [
+    { id: 1, agent_id: 1, role: 'user' as const, content: 'Hello', created_at: '2020-01-01T00:00:00Z' },
+    { id: 2, agent_id: 1, role: 'assistant' as const, content: 'Hi there!', created_at: '2020-01-01T00:01:00Z' },
+  ]
 
-    // Trigger messages load for active agent
-    await act(async () => {})
-    expect(Object.values(result.current.messagesByAgent)[0]?.length).toBeGreaterThanOrEqual(1)
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mockGetAgents.mockResolvedValue(defaultAgents)
+    mockGetMessages.mockResolvedValue(defaultMessages)
+    mockStreamChat.mockImplementation(async ({ onToken }: any) => {
+      onToken('Hello')
+      onToken(' from')
+      onToken(' assistant')
+    })
+    jest.clearAllTimers()
+  })
 
-    // Prepare to submit
-    act(() => {
-      result.current.setInput('Test prompt')
+  describe('Initialization', () => {
+    test('provides initial state with empty data', async () => {
+      const { result } = renderHook(() => useChat())
+
+      expect(result.current.agents).toEqual([])
+      expect(result.current.activeAgentId).toBeNull()
+      expect(result.current.messagesByAgent).toEqual({})
+      expect(result.current.input).toBe('')
+      expect(result.current.isLoading).toBe(false)
+      expect(result.current.isStreaming).toBe(false)
+
+      await waitFor(() => {
+        expect(result.current.agents.length).toBeGreaterThan(0)
+      })
     })
 
-    await act(async () => {
-      await result.current.onSubmit()
+    test('loads agents on mount and sets first as active', async () => {
+      const { result } = renderHook(() => useChat())
+
+      await waitFor(() => {
+        expect(result.current.agents).toHaveLength(2)
+      })
+
+      expect(result.current.agents).toEqual(defaultAgents)
+      expect(result.current.activeAgentId).toBe(1)
+      expect(mockGetAgents).toHaveBeenCalledTimes(1)
     })
 
-    const msgs = result.current.messagesByAgent[result.current.activeAgentId as number]
-    expect(msgs[msgs.length - 1].role).toBe('assistant')
-    expect(msgs[msgs.length - 1].content).toContain('hello')
+    test('handles agent loading failure gracefully', async () => {
+      mockGetAgents.mockRejectedValueOnce(new Error('Network error'))
+      const { result } = renderHook(() => useChat())
 
-    // Abort
-    act(() => {
-      result.current.stop()
+      await waitFor(() => {
+        expect(logger.error).toHaveBeenCalledWith('Failed to load agents', expect.any(Error))
+      })
+
+      expect(result.current.agents).toEqual([])
+      expect(result.current.activeAgentId).toBeNull()
+    })
+  })
+
+  describe('Agent Selection', () => {
+    test('loads messages when agent is selected', async () => {
+      const { result } = renderHook(() => useChat())
+
+      await waitFor(() => {
+        expect(result.current.activeAgentId).toBe(1)
+      })
+
+      await waitFor(() => {
+        expect(result.current.messagesByAgent[1]).toBeDefined()
+      })
+
+      expect(result.current.messagesByAgent[1]).toHaveLength(2)
+      expect(mockGetMessages).toHaveBeenCalledWith(1)
+    })
+
+    test('switches to different agent and loads its messages', async () => {
+      const { result } = renderHook(() => useChat())
+
+      await waitFor(() => {
+        expect(result.current.activeAgentId).toBe(1)
+      })
+
+      act(() => {
+        result.current.setActiveAgentId(2)
+      })
+
+      expect(result.current.activeAgentId).toBe(2)
+
+      await waitFor(() => {
+        expect(result.current.messagesByAgent[2]).toBeDefined()
+      })
+
+      expect(mockGetMessages).toHaveBeenCalledWith(2)
+    })
+
+    test('handles message loading failure by setting empty array', async () => {
+      mockGetMessages.mockRejectedValueOnce(new Error('Failed to load messages'))
+      const { result } = renderHook(() => useChat())
+
+      await waitFor(() => {
+        expect(result.current.activeAgentId).toBe(1)
+      })
+
+      await waitFor(() => {
+        expect(result.current.messagesByAgent[1]).toEqual([])
+      })
+
+      expect(logger.error).toHaveBeenCalledWith(
+        'Failed to load messages for agent',
+        1,
+        expect.any(Error)
+      )
+    })
+  })
+
+  describe('Message Input', () => {
+    test('updates input value when setInput is called', async () => {
+      const { result } = renderHook(() => useChat())
+
+      act(() => {
+        result.current.setInput('Test message')
+      })
+
+      expect(result.current.input).toBe('Test message')
+
+      await waitFor(() => {
+        expect(result.current.agents.length).toBeGreaterThan(0)
+      })
+    })
+
+    test('clears input after successful message submission', async () => {
+      const { result } = renderHook(() => useChat())
+
+      await waitFor(() => {
+        expect(result.current.activeAgentId).toBe(1)
+      })
+
+      act(() => {
+        result.current.setInput('Test prompt')
+      })
+
+      await act(async () => {
+        await result.current.onSubmit()
+      })
+
+      expect(result.current.input).toBe('')
+    })
+  })
+
+  describe('Message Submission', () => {
+    test('submits message and streams response successfully', async () => {
+      const { result } = renderHook(() => useChat())
+
+      await waitFor(() => expect(result.current.activeAgentId).toBe(1))
+      
+      await waitFor(() => expect(result.current.messagesByAgent[1]).toBeDefined())
+
+      act(() => {
+        result.current.setInput('Test prompt')
+      })
+
+      await act(async () => {
+        await result.current.onSubmit()
+      })
+
+      const messages = result.current.messagesByAgent[1]
+      const userMessage = messages.find(m => m.content === 'Test prompt')
+      const assistantMessage = messages.find(m => m.content === 'Hello from assistant')
+
+      expect(userMessage).toBeTruthy()
+      expect(userMessage?.role).toBe('user')
+      expect(assistantMessage).toBeTruthy()
+      expect(assistantMessage?.role).toBe('assistant')
+    })
+
+    test('sets loading state correctly during submission', async () => {
+      const { result } = renderHook(() => useChat())
+
+      await waitFor(() => {
+        expect(result.current.activeAgentId).toBe(1)
+      })
+
+      act(() => {
+        result.current.setInput('Test prompt')
+      })
+      
+      let submitPromise;
+      act(() => {
+        submitPromise = result.current.onSubmit()
+      })
+      
+      expect(result.current.isLoading).toBe(true)
+      expect(result.current.isStreaming).toBe(true)
+
+      await act(async () => {
+          await submitPromise;
+      })
+
+      expect(result.current.isLoading).toBe(false)
+      expect(result.current.isStreaming).toBe(false)
+    })
+
+    test('does not submit when input is empty', async () => {
+      const { result } = renderHook(() => useChat())
+
+      await waitFor(() => {
+        expect(result.current.agents).toHaveLength(2)
+      })
+
+      await act(async () => {
+        await result.current.onSubmit()
+      })
+
+      expect(mockStreamChat).not.toHaveBeenCalled()
+    })
+
+    test('does not submit when no active agent', async () => {
+      mockGetAgents.mockResolvedValueOnce([])
+      const { result } = renderHook(() => useChat())
+
+      await waitFor(() => {
+        expect(result.current.agents).toEqual([])
+      })
+      
+      act(() => {
+        result.current.setInput('Test message')
+      })
+
+      await act(async () => {
+        await result.current.onSubmit()
+      })
+
+      expect(mockStreamChat).not.toHaveBeenCalled()
+    })
+
+    test('prevents double submission', async () => {
+      const { result } = renderHook(() => useChat())
+
+      await waitFor(() => expect(result.current.activeAgentId).toBe(1))
+
+      act(() => {
+        result.current.setInput('Test message')
+      })
+
+      act(() => {
+        result.current.onSubmit()
+      })
+
+      await waitFor(() => expect(result.current.isLoading).toBe(true))
+
+      act(() => {
+        result.current.onSubmit()
+      })
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+      expect(mockStreamChat).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('Stop Functionality', () => {
+    test('provides stop function', async () => {
+      const { result } = renderHook(() => useChat())
+
+      expect(typeof result.current.stop).toBe('function')
+
+      await waitFor(() => {
+        expect(result.current.agents.length).toBeGreaterThan(0)
+      })
+    })
+  })
+
+  describe('Error Handling', () => {
+    test('handles streaming errors gracefully', async () => {
+      const error = new Error('Stream failed')
+      mockStreamChat.mockRejectedValueOnce(error)
+      const { result } = renderHook(() => useChat())
+
+      await waitFor(() => {
+        expect(result.current.activeAgentId).toBe(1)
+      })
+      
+      await waitFor(() => expect(result.current.messagesByAgent[1]).toBeDefined())
+
+      act(() => {
+        result.current.setInput('Test prompt')
+      })
+
+      await act(async () => {
+        await result.current.onSubmit()
+      })
+
+      const messages = result.current.messagesByAgent[1]
+      const lastMessage = messages[messages.length - 1]
+
+      expect(lastMessage.role).toBe('assistant')
+      expect(lastMessage.content).toBe('Stream failed')
+      expect(logger.error).toHaveBeenCalledWith('Stream error', error)
+    })
+  })
+
+  describe('State Management', () => {
+    test('maintains messages by agent correctly', async () => {
+      const { result } = renderHook(() => useChat())
+
+      await waitFor(() => {
+        expect(result.current.activeAgentId).toBe(1)
+      })
+
+      await waitFor(() => {
+        expect(result.current.messagesByAgent[1]).toBeDefined()
+      })
+
+      expect(Object.keys(result.current.messagesByAgent)).toContain('1')
+      expect(result.current.messagesByAgent[1]).toHaveLength(2)
     })
   })
 })
-
-
