@@ -44,7 +44,7 @@ describe('chatService', () => {
   describe('streamChat', () => {
     test('processes streaming tokens correctly and filters control tokens', async () => {
       const tokens: string[] = []
-      await streamChat({ message: 'hi', onToken: (t) => tokens.push(t) })
+      await streamChat({ message: 'hi', agentId: 1, onToken: (t) => tokens.push(t) })
       
       expect(tokens).toEqual(['hello', 'world'])
       // Should not include [DONE] control token
@@ -52,7 +52,7 @@ describe('chatService', () => {
     })
 
     test('sends correct request parameters to chat endpoint', async () => {
-      await streamChat({ message: 'test message', onToken: mockOnToken })
+      await streamChat({ message: 'test message', agentId: 1, onToken: mockOnToken })
       
       expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining('/chat'),
@@ -61,7 +61,7 @@ describe('chatService', () => {
           headers: expect.objectContaining({
             'Content-Type': 'application/json'
           }),
-          body: JSON.stringify({ message: 'test message' }),
+          body: JSON.stringify({ message: 'test message', agent_id: 1 }),
           cache: 'no-store'
         })
       )
@@ -73,7 +73,7 @@ describe('chatService', () => {
       )
 
       const tokens: string[] = []
-      await streamChat({ message: 'empty', onToken: (t) => tokens.push(t) })
+      await streamChat({ message: 'empty', agentId: 1, onToken: (t) => tokens.push(t) })
       
       expect(tokens).toEqual([])
     })
@@ -91,13 +91,13 @@ describe('chatService', () => {
       )
 
       const tokens: string[] = []
-      await streamChat({ message: 'story', onToken: (t) => tokens.push(t) })
+      await streamChat({ message: 'story', agentId: 1, onToken: (t) => tokens.push(t) })
       
       expect(tokens).toEqual(['The', 'quick', 'brown', 'fox'])
     })
 
     test('calls onToken callback for each valid token', async () => {
-      await streamChat({ message: 'test', onToken: mockOnToken })
+      await streamChat({ message: 'test', agentId: 1, onToken: mockOnToken })
       
       expect(mockOnToken).toHaveBeenCalledTimes(2)
       expect(mockOnToken).toHaveBeenNthCalledWith(1, 'hello')
@@ -109,7 +109,7 @@ describe('chatService', () => {
       ;(global.fetch as jest.Mock).mockRejectedValueOnce(networkError)
 
       await expect(
-        streamChat({ message: 'test', onToken: mockOnToken })
+        streamChat({ message: 'test', agentId: 1, onToken: mockOnToken })
       ).rejects.toThrow('Network connection failed')
       
       expect(mockOnToken).not.toHaveBeenCalled()
@@ -123,7 +123,7 @@ describe('chatService', () => {
       })
 
       await expect(
-        streamChat({ message: 'test', onToken: mockOnToken })
+        streamChat({ message: 'test', agentId: 1, onToken: mockOnToken })
       ).rejects.toThrow()
     })
 
@@ -140,7 +140,7 @@ describe('chatService', () => {
       })
 
       await expect(
-        streamChat({ message: 'test', onToken: mockOnToken })
+        streamChat({ message: 'test', agentId: 1, onToken: mockOnToken })
       ).rejects.toThrow('Stream corrupted')
     })
 
@@ -156,18 +156,18 @@ describe('chatService', () => {
       )
 
       const tokens: string[] = []
-      await streamChat({ message: 'test', onToken: (t) => tokens.push(t) })
+      await streamChat({ message: 'test', agentId: 1, onToken: (t) => tokens.push(t) })
       
       expect(tokens).toEqual(['valid_token', 'another_valid'])
     })
 
     test('handles empty message input', async () => {
-      await streamChat({ message: '', onToken: mockOnToken })
+      await streamChat({ message: '', agentId: 1, onToken: mockOnToken })
       
       expect(global.fetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          body: JSON.stringify({ message: '' }),
+          body: JSON.stringify({ message: '', agent_id: 1 }),
           cache: 'no-store'
         })
       )
@@ -183,7 +183,7 @@ describe('chatService', () => {
       )
 
       const tokens: string[] = []
-      await streamChat({ message: 'test', onToken: (t) => tokens.push(t) })
+      await streamChat({ message: 'test', agentId: 1, onToken: (t) => tokens.push(t) })
       
       // Should only include content tokens, [DONE] stops the stream
       expect(tokens).toEqual(['hello'])

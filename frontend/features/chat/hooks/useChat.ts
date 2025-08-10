@@ -102,6 +102,7 @@ export function useChat(): UseChatApi {
     try {
       await streamChat({
         message: userMsg.content,
+        agentId: activeAgentId,
         signal: controller.signal,
         onToken: (token) => {
           setMessagesByAgent((prev) => {

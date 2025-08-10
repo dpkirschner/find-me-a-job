@@ -1,8 +1,9 @@
 # main.py
 
+import asyncio
+from collections.abc import AsyncGenerator
 
-import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -12,6 +13,7 @@ from backend.db import (
     agent_exists,
     create_agent,
     initialize_database,
+    insert_message,
     list_agents,
     list_messages,
 )
@@ -20,8 +22,25 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+async def tee_stream_and_queue(streamer: AsyncGenerator, queue: asyncio.Queue):
+    try:
+        async for event in streamer:
+            await queue.put(event)
+            yield event
+    except Exception as e:
+        logger.error(f"Error during stream generation: {e}")
+        await queue.put({"event": "error", "data": str(e)})
+        yield {"event": "error", "data": f"Stream error: {e}"}
+    finally:
+        # This is critical: send the sentinel value to signal the
+        # background task that the stream has ended.
+        await queue.put(None)
+        logger.info("TEE: Stream finished, 'None' sentinel sent to queue.")
+
+
 class ChatRequest(BaseModel):
     message: str
+    agent_id: int
 
 
 class Agent(BaseModel):
@@ -128,53 +147,69 @@ async def get_agent_messages(agent_id: int):
         raise HTTPException(status_code=500, detail="Failed to fetch messages")
 
 
+async def persist_from_queue(agent_id: int, queue: asyncio.Queue):
+    logger.info(
+        f"BACKGROUND: Persistence task started for agent {agent_id}, awaiting items..."
+    )
+    assistant_response = ""
+    while True:
+        event = await queue.get()
+        if event is None:  # Sentinel value received, stream is done
+            break
+
+        if event.get("event") == "message":
+            assistant_response += event.get("data", "")
+
+    if assistant_response.strip():
+        try:
+            insert_message(agent_id, "assistant", assistant_response)
+            logger.info(
+                f"BACKGROUND: Assistant response saved successfully for agent {agent_id}"
+            )
+        except Exception as e:
+            logger.error(f"BACKGROUND: Failed to save assistant response to DB: {e}")
+    else:
+        logger.warning(
+            f"BACKGROUND: No assistant response to save for agent {agent_id}"
+        )
+
+
 @app.post("/chat")
-async def chat(request: ChatRequest):
-    logger.info(f"Chat request received with message length: {len(request.message)}")
+async def chat(request: ChatRequest, background_tasks: BackgroundTasks):
+    logger.info(
+        f"Chat request received with message length: {len(request.message)} for agent {request.agent_id}"
+    )
 
     if not request.message:
         logger.warning("Empty message received in chat request")
         raise HTTPException(status_code=400, detail="Message must not be empty")
 
-    logger.debug(f"Starting graph streaming for message: {request.message[:50]}...")
-    streamer = stream_graph_events(request.message)
+    if not agent_exists(request.agent_id):
+        logger.warning(f"Agent {request.agent_id} not found")
+        raise HTTPException(status_code=404, detail="Agent not found")
 
     try:
-        logger.debug("Getting first event from stream")
-        first_event = await streamer.__anext__()
-        logger.debug(f"First event received: {first_event}")
-    except StopAsyncIteration:
-        logger.warning("Stream ended immediately with no events")
-        return EventSourceResponse(iter([]))
-    except (ConnectionError, requests.exceptions.ConnectionError) as e:
-        logger.error(f"LLM connection error: {e}")
-        raise HTTPException(status_code=503, detail="LLM service is unavailable")
+        insert_message(request.agent_id, "user", request.message)
+        logger.info(f"User message saved to database for agent {request.agent_id}")
     except Exception as e:
-        logger.error(f"Unexpected error getting first event: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Error saving user message: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save message")
 
-    async def event_generator():
-        logger.debug("Starting event generator")
-        event_count = 0
-        try:
-            yield first_event
-            event_count += 1
+    try:
+        original_streamer = stream_graph_events(request.message)
+        persistence_queue = asyncio.Queue()
+        background_tasks.add_task(
+            persist_from_queue, request.agent_id, persistence_queue
+        )
 
-            async for event in streamer:
-                event_count += 1
-                logger.debug(f"Yielding event #{event_count}: {event}")
-                yield event
+        teed_generator = tee_stream_and_queue(original_streamer, persistence_queue)
 
-        except Exception as e:
-            logger.error(f"Error in event generator after {event_count} events: {e}")
-            yield {"event": "error", "data": f"Stream error: {e}"}
-        finally:
-            logger.info(f"Event generator completed, total events: {event_count}")
-
-    return EventSourceResponse(
-        event_generator(),
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
+        return EventSourceResponse(
+            teed_generator,
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize stream: {e}")
+        raise HTTPException(
+            status_code=500, detail="LLM service failed to start stream"
+        )

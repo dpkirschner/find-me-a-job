@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agents.graph import stream_graph_events
-from backend.app import ChatRequest, app
+from backend.app import ChatRequest, app, persist_from_queue, tee_stream_and_queue
 
 
 @pytest.fixture
@@ -77,8 +77,16 @@ class TestChatEndpoint:
     """Tests for the /chat endpoint."""
 
     @patch("backend.app.stream_graph_events")
-    def test_chat_endpoint_success(self, mock_stream_graph_events, client):
+    @patch("backend.app.agent_exists")
+    @patch("backend.app.insert_message")
+    def test_chat_endpoint_success(
+        self, mock_insert_message, mock_agent_exists, mock_stream_graph_events, client
+    ):
         """Test successful chat endpoint call."""
+
+        # Setup mocks
+        mock_agent_exists.return_value = True
+        mock_insert_message.return_value = None
 
         # Setup mock async iterator
         async def mock_events():
@@ -89,7 +97,7 @@ class TestChatEndpoint:
         mock_stream_graph_events.return_value = mock_events()
 
         # Execute
-        response = client.post("/chat", json={"message": "Hello"})
+        response = client.post("/chat", json={"message": "Hello", "agent_id": 1})
 
         # Assertions
         assert response.status_code == 200
@@ -104,6 +112,14 @@ class TestChatEndpoint:
         assert "data: [DONE]" in content
 
         mock_stream_graph_events.assert_called_once_with("Hello")
+        mock_agent_exists.assert_called_once_with(1)
+
+        # Should be called twice: once for user message, once for assistant response (background task)
+        assert mock_insert_message.call_count == 2
+        mock_insert_message.assert_any_call(1, "user", "Hello")
+
+        # With the tee approach, background task gets all message events: "Hello" + " there"
+        mock_insert_message.assert_any_call(1, "assistant", "Hello there")
 
     def test_chat_endpoint_invalid_request_body(self, client):
         """Test chat endpoint with invalid request body."""
@@ -118,25 +134,81 @@ class TestChatEndpoint:
         assert response.status_code == 422  # Validation error
 
     @patch("backend.app.stream_graph_events")
-    def test_chat_endpoint_returns_503_on_connection_error(
-        self, mock_stream_graph_events, client
+    @patch("backend.app.agent_exists")
+    @patch("backend.app.insert_message")
+    def test_chat_endpoint_handles_stream_error_gracefully(
+        self, mock_insert_message, mock_agent_exists, mock_stream_graph_events, client
     ):
-        """Test chat endpoint returns 503 when connection fails."""
-        import requests as requests_lib
+        """Test chat endpoint handles stream errors gracefully within SSE."""
+        # Setup mocks
+        mock_agent_exists.return_value = True
+        mock_insert_message.return_value = None
 
         async def failing_stream():
-            if False:
-                yield
-            raise requests_lib.exceptions.ConnectionError("Connection refused")
+            yield {"event": "message", "data": "Hello"}
+            raise Exception("Stream failed")
 
         mock_stream_graph_events.return_value = failing_stream()
 
         # Execute
-        response = client.post("/chat", json={"message": "Hello"})
+        response = client.post("/chat", json={"message": "Hello", "agent_id": 1})
+
+        # Assertions - SSE connection succeeds, error is handled within stream
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+
+        # Check that error is communicated via SSE
+        content = response.text
+        assert "event: message" in content
+        assert "data: Hello" in content
+        assert "event: error" in content
+        assert "Stream failed" in content
+
+    @patch("backend.app.stream_graph_events")
+    @patch("backend.app.agent_exists")
+    @patch("backend.app.insert_message")
+    def test_chat_endpoint_returns_500_on_initialization_error(
+        self, mock_insert_message, mock_agent_exists, mock_stream_graph_events, client
+    ):
+        """Test chat endpoint returns 500 when stream initialization fails."""
+        # Setup mocks
+        mock_agent_exists.return_value = True
+        mock_insert_message.return_value = None
+
+        # Mock stream_graph_events to raise immediately
+        mock_stream_graph_events.side_effect = Exception("Failed to initialize stream")
+
+        # Execute
+        response = client.post("/chat", json={"message": "Hello", "agent_id": 1})
 
         # Assertions
-        assert response.status_code == 503
-        assert response.json()["detail"] == "LLM service is unavailable"
+        assert response.status_code == 500
+        assert response.json()["detail"] == "LLM service failed to start stream"
+
+    @patch("backend.app.agent_exists")
+    def test_chat_endpoint_agent_not_found(self, mock_agent_exists, client):
+        """Test chat endpoint returns 404 when agent doesn't exist."""
+        mock_agent_exists.return_value = False
+
+        response = client.post("/chat", json={"message": "Hello", "agent_id": 999})
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Agent not found"
+
+    @patch("backend.app.stream_graph_events")
+    @patch("backend.app.agent_exists")
+    @patch("backend.app.insert_message")
+    def test_chat_endpoint_database_save_error(
+        self, mock_insert_message, mock_agent_exists, mock_stream_graph_events, client
+    ):
+        """Test chat endpoint returns 500 when database save fails."""
+        mock_agent_exists.return_value = True
+        mock_insert_message.side_effect = Exception("Database error")
+
+        response = client.post("/chat", json={"message": "Hello", "agent_id": 1})
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to save message"
 
 
 class TestChatRequestModel:
@@ -144,13 +216,15 @@ class TestChatRequestModel:
 
     def test_chat_request_valid(self):
         """Test valid ChatRequest creation."""
-        request = ChatRequest(message="Hello world")
+        request = ChatRequest(message="Hello world", agent_id=1)
         assert request.message == "Hello world"
+        assert request.agent_id == 1
 
     def test_chat_request_empty_message(self):
         """Test ChatRequest with empty message."""
-        request = ChatRequest(message="")
+        request = ChatRequest(message="", agent_id=1)
         assert request.message == ""
+        assert request.agent_id == 1
 
     def test_chat_request_missing_message(self):
         """Test ChatRequest validation with missing message field."""
@@ -439,3 +513,155 @@ class TestAgentMessagesEndpoint:
         json_response = response.json()
         assert json_response["detail"] == "Agent not found"
         mock_agent_exists.assert_called_once_with(999)
+
+
+class TestTeeStreamAndQueue:
+    """Tests for the tee_stream_and_queue function."""
+
+    @pytest.mark.asyncio
+    async def test_tee_stream_and_queue_success(self):
+        """Test that tee_stream_and_queue properly feeds both client and queue."""
+        import asyncio
+
+        # Create test events
+        async def mock_stream():
+            yield {"event": "message", "data": "Hello"}
+            yield {"event": "message", "data": " world"}
+            yield {"event": "done", "data": "[DONE]"}
+
+        # Set up queue and tee
+        queue = asyncio.Queue()
+        teed_stream = tee_stream_and_queue(mock_stream(), queue)
+
+        # Collect events from the teed stream
+        client_events = []
+        async for event in teed_stream:
+            client_events.append(event)
+
+        # Verify client got all events
+        assert len(client_events) == 3
+        assert client_events[0] == {"event": "message", "data": "Hello"}
+        assert client_events[1] == {"event": "message", "data": " world"}
+        assert client_events[2] == {"event": "done", "data": "[DONE]"}
+
+        # Verify queue received all events plus sentinel
+        queue_events = []
+        while not queue.empty():
+            event = await queue.get()
+            queue_events.append(event)
+
+        assert len(queue_events) == 4  # 3 events + None sentinel
+        assert queue_events[0] == {"event": "message", "data": "Hello"}
+        assert queue_events[1] == {"event": "message", "data": " world"}
+        assert queue_events[2] == {"event": "done", "data": "[DONE]"}
+        assert queue_events[3] is None  # Sentinel
+
+    @pytest.mark.asyncio
+    async def test_tee_stream_and_queue_error_handling(self):
+        """Test that tee_stream_and_queue handles errors properly."""
+        import asyncio
+
+        async def failing_stream():
+            yield {"event": "message", "data": "Hello"}
+            raise Exception("Stream failed")
+
+        queue = asyncio.Queue()
+        teed_stream = tee_stream_and_queue(failing_stream(), queue)
+
+        # Collect events (should include error)
+        client_events = []
+        async for event in teed_stream:
+            client_events.append(event)
+
+        # Should have message + error event
+        assert len(client_events) == 2
+        assert client_events[0] == {"event": "message", "data": "Hello"}
+        assert client_events[1]["event"] == "error"
+        assert "Stream failed" in client_events[1]["data"]
+
+        # Queue should have same events + sentinel
+        queue_events = []
+        while not queue.empty():
+            event = await queue.get()
+            queue_events.append(event)
+
+        assert len(queue_events) == 3  # message + error + sentinel
+        assert queue_events[2] is None  # Sentinel
+
+
+class TestPersistFromQueue:
+    """Tests for the persist_from_queue function."""
+
+    @pytest.mark.asyncio
+    @patch("backend.app.insert_message")
+    async def test_persist_from_queue_success(self, mock_insert_message):
+        """Test successful persistence from queue."""
+        import asyncio
+
+        # Set up queue with test events
+        queue = asyncio.Queue()
+        await queue.put({"event": "message", "data": "Hello"})
+        await queue.put({"event": "message", "data": " world"})
+        await queue.put({"event": "done", "data": "[DONE]"})
+        await queue.put(None)  # Sentinel
+
+        # Execute
+        await persist_from_queue(agent_id=1, queue=queue)
+
+        # Verify message was saved with concatenated content
+        mock_insert_message.assert_called_once_with(1, "assistant", "Hello world")
+
+    @pytest.mark.asyncio
+    @patch("backend.app.insert_message")
+    async def test_persist_from_queue_no_message_events(self, mock_insert_message):
+        """Test persistence when no message events are present."""
+        import asyncio
+
+        # Set up queue with only non-message events
+        queue = asyncio.Queue()
+        await queue.put({"event": "done", "data": "[DONE]"})
+        await queue.put(None)  # Sentinel
+
+        # Execute
+        await persist_from_queue(agent_id=1, queue=queue)
+
+        # Verify no message was saved
+        mock_insert_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("backend.app.insert_message")
+    async def test_persist_from_queue_database_error(self, mock_insert_message):
+        """Test persistence handles database errors gracefully."""
+        import asyncio
+
+        # Mock database error
+        mock_insert_message.side_effect = Exception("Database error")
+
+        # Set up queue with test events
+        queue = asyncio.Queue()
+        await queue.put({"event": "message", "data": "Hello"})
+        await queue.put(None)  # Sentinel
+
+        # Execute (should not raise exception)
+        await persist_from_queue(agent_id=1, queue=queue)
+
+        # Verify insert was attempted
+        mock_insert_message.assert_called_once_with(1, "assistant", "Hello")
+
+    @pytest.mark.asyncio
+    @patch("backend.app.insert_message")
+    async def test_persist_from_queue_empty_content(self, mock_insert_message):
+        """Test persistence when message content is empty."""
+        import asyncio
+
+        # Set up queue with empty message events
+        queue = asyncio.Queue()
+        await queue.put({"event": "message", "data": ""})
+        await queue.put({"event": "message", "data": "   "})  # Only whitespace
+        await queue.put(None)  # Sentinel
+
+        # Execute
+        await persist_from_queue(agent_id=1, queue=queue)
+
+        # Verify no message was saved (empty after strip)
+        mock_insert_message.assert_not_called()

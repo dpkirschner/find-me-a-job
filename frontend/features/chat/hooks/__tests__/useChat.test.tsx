@@ -207,6 +207,14 @@ describe('useChat', () => {
       expect(userMessage?.role).toBe('user')
       expect(assistantMessage).toBeTruthy()
       expect(assistantMessage?.role).toBe('assistant')
+      
+      expect(mockStreamChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'Test prompt',
+          agentId: 1,
+          onToken: expect.any(Function)
+        })
+      )
     })
 
     test('sets loading state correctly during submission', async () => {
