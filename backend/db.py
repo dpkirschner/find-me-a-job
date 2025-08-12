@@ -32,13 +32,21 @@ def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
 
 
 def initialize_database():
-    """Initializes the database by executing the setup SQL script."""
+    """Initializes the database by executing the setup SQL script and seeding with default data."""
     if not INIT_SQL_PATH.exists():
         raise FileNotFoundError(f"Initialization SQL not found: {INIT_SQL_PATH}")
 
     with get_connection() as conn:
         with open(INIT_SQL_PATH) as f:
             conn.executescript(f.read())
+
+    # Seed with default agents
+    ensure_seed_agents(["orchestrator", "researcher", "writer"])
+
+    # Create a default conversation for the first agent
+    agents = list_agents()
+    if agents:
+        create_conversation(agents[0]["id"], "default-conversation")
 
 
 def list_agents() -> list[dict[str, Any]]:
