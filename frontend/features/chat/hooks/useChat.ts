@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Agent, UIMessage } from '../types'
-import { getAgents, getMessages, createAgent } from '../services/agentService'
+import { getAgents, getMessages, createAgent, deleteAgent } from '../services/agentService'
 import { streamChat } from '../services/chatService'
 import logger from '../../../lib/logger'
 
@@ -19,6 +19,7 @@ export interface UseChatApi extends UseChatState {
   onSubmit: (e?: React.FormEvent) => Promise<void>
   stop: () => void
   createAgent: (name: string) => Promise<void>
+  deleteAgent: (agentId: number) => Promise<void>
 }
 
 export function useChat(): UseChatApi {
@@ -155,6 +156,34 @@ export function useChat(): UseChatApi {
     }
   }, [])
 
+  const handleDeleteAgent = useCallback(async (agentId: number) => {
+    try {
+      await deleteAgent(agentId)
+      setAgents((prev) => prev.filter(a => a.id !== agentId))
+      
+      // Clean up messages for deleted agent
+      setMessagesByAgent((prev) => {
+        const { [agentId]: deleted, ...rest } = prev
+        return rest
+      })
+      
+      // Handle active agent deletion
+      if (activeAgentId === agentId) {
+        setAgents((currentAgents) => {
+          const remainingAgents = currentAgents.filter(a => a.id !== agentId)
+          if (remainingAgents.length > 0) {
+            setActiveAgentId(remainingAgents[0].id)
+          } else {
+            setActiveAgentId(null)
+          }
+          return remainingAgents
+        })
+      }
+    } catch (e) {
+      logger.error('Failed to delete agent', e)
+    }
+  }, [activeAgentId])
+
   return {
     agents,
     activeAgentId,
@@ -167,6 +196,7 @@ export function useChat(): UseChatApi {
     onSubmit,
     stop,
     createAgent: handleCreateAgent,
+    deleteAgent: handleDeleteAgent,
   }
 }
 

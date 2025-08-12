@@ -20,7 +20,7 @@ function useTheme() {
 }
 
 export function ChatPage() {
-  const { agents, activeAgentId, setActiveAgentId, messagesByAgent, isLoading, isStreaming, input, setInput, onSubmit, stop, createAgent } = useChat()
+  const { agents, activeAgentId, setActiveAgentId, messagesByAgent, isLoading, isStreaming, input, setInput, onSubmit, stop, createAgent, deleteAgent } = useChat()
   const { dark, setDark } = useTheme()
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false)
@@ -48,6 +48,7 @@ export function ChatPage() {
           leftCollapsed={leftCollapsed}
           setLeftCollapsed={setLeftCollapsed}
           onCreateAgent={createAgent}
+          onDeleteAgent={deleteAgent}
         />
 
         <main className="min-h-0 flex flex-col" role="main">

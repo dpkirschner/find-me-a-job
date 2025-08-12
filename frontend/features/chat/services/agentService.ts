@@ -28,4 +28,11 @@ export async function createAgent(name: string): Promise<Agent> {
   return agent
 }
 
+export async function deleteAgent(agentId: number): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/agents/${agentId}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) throw new Error(`Failed to delete agent: ${res.status}`)
+}
+
 

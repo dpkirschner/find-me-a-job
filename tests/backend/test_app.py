@@ -665,3 +665,172 @@ class TestPersistFromQueue:
 
         # Verify no message was saved (empty after strip)
         mock_insert_message.assert_not_called()
+
+
+class TestDeleteAgentEndpoint:
+    """Tests for the DELETE /agents/{agent_id} endpoint."""
+
+    @patch("backend.app.delete_agent")
+    @patch("backend.app.agent_exists")
+    def test_delete_agent_success(self, mock_agent_exists, mock_delete_agent, client):
+        """Test successful DELETE /agents/{agent_id} endpoint call."""
+        # Setup mocks
+        mock_agent_exists.return_value = True  # Agent exists
+        mock_delete_agent.return_value = True  # Deletion successful
+
+        # Execute
+        agent_id = 1
+        response = client.delete(f"/agents/{agent_id}")
+
+        # Assertions
+        assert response.status_code == 204
+        assert response.content == b""  # No content for 204
+
+        # Verify the DB functions were called
+        mock_agent_exists.assert_called_once_with(agent_id)
+        mock_delete_agent.assert_called_once_with(agent_id)
+
+    @patch("backend.app.delete_agent")
+    @patch("backend.app.agent_exists")
+    def test_delete_agent_not_found(self, mock_agent_exists, mock_delete_agent, client):
+        """Test DELETE /agents/{agent_id} endpoint with non-existent agent."""
+        # Setup mock to return False (agent doesn't exist)
+        mock_agent_exists.return_value = False
+
+        # Execute
+        agent_id = 999
+        response = client.delete(f"/agents/{agent_id}")
+
+        # Assertions
+        assert response.status_code == 404
+        json_response = response.json()
+        assert json_response["detail"] == "Agent not found"
+
+        # Verify only agent_exists was called, not delete_agent
+        mock_agent_exists.assert_called_once_with(agent_id)
+        mock_delete_agent.assert_not_called()
+
+    @patch("backend.app.delete_agent")
+    @patch("backend.app.agent_exists")
+    def test_delete_agent_database_error(
+        self, mock_agent_exists, mock_delete_agent, client
+    ):
+        """Test DELETE /agents/{agent_id} endpoint handles database errors."""
+        # Setup mocks
+        mock_agent_exists.return_value = True  # Agent exists
+        mock_delete_agent.side_effect = Exception("Database connection failed")
+
+        # Execute
+        agent_id = 1
+        response = client.delete(f"/agents/{agent_id}")
+
+        # Assertions
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to delete agent"
+
+        # Verify both functions were called
+        mock_agent_exists.assert_called_once_with(agent_id)
+        mock_delete_agent.assert_called_once_with(agent_id)
+
+    @patch("backend.app.delete_agent")
+    @patch("backend.app.agent_exists")
+    def test_delete_agent_deletion_failed(
+        self, mock_agent_exists, mock_delete_agent, client
+    ):
+        """Test DELETE /agents/{agent_id} endpoint when deletion returns False."""
+        # Setup mocks
+        mock_agent_exists.return_value = True  # Agent exists
+        mock_delete_agent.return_value = False  # Deletion failed (returned False)
+
+        # Execute
+        agent_id = 1
+        response = client.delete(f"/agents/{agent_id}")
+
+        # Assertions
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to delete agent"
+
+        # Verify both functions were called
+        mock_agent_exists.assert_called_once_with(agent_id)
+        mock_delete_agent.assert_called_once_with(agent_id)
+
+    def test_delete_agent_invalid_agent_id(self, client):
+        """Test DELETE /agents/{agent_id} endpoint with invalid agent_id."""
+        # Execute with non-integer agent_id
+        response = client.delete("/agents/invalid")
+
+        # Assertions
+        assert response.status_code == 422  # Validation error
+
+    @patch("backend.app.delete_agent")
+    @patch("backend.app.agent_exists")
+    def test_delete_agent_with_negative_id(
+        self, mock_agent_exists, mock_delete_agent, client
+    ):
+        """Test DELETE /agents/{agent_id} endpoint with negative agent_id."""
+        # Setup mocks
+        mock_agent_exists.return_value = False  # Negative IDs shouldn't exist
+
+        # Execute with negative agent_id
+        response = client.delete("/agents/-1")
+
+        # Assertions
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Agent not found"
+
+        # Verify agent_exists was called with the negative ID
+        mock_agent_exists.assert_called_once_with(-1)
+        mock_delete_agent.assert_not_called()
+
+    @patch("backend.app.delete_agent")
+    @patch("backend.app.agent_exists")
+    def test_delete_agent_with_zero_id(
+        self, mock_agent_exists, mock_delete_agent, client
+    ):
+        """Test DELETE /agents/{agent_id} endpoint with zero agent_id."""
+        # Setup mocks
+        mock_agent_exists.return_value = False  # Zero ID shouldn't exist
+
+        # Execute with zero agent_id
+        response = client.delete("/agents/0")
+
+        # Assertions
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Agent not found"
+
+        # Verify agent_exists was called with zero
+        mock_agent_exists.assert_called_once_with(0)
+        mock_delete_agent.assert_not_called()
+
+    @patch("backend.app.delete_agent")
+    @patch("backend.app.agent_exists")
+    def test_delete_agent_multiple_calls_same_agent(
+        self, mock_agent_exists, mock_delete_agent, client
+    ):
+        """Test DELETE /agents/{agent_id} endpoint called multiple times on same agent."""
+        # Setup mocks for first call - agent exists and deletion succeeds
+        mock_agent_exists.return_value = True
+        mock_delete_agent.return_value = True
+
+        # Execute first deletion
+        agent_id = 1
+        response1 = client.delete(f"/agents/{agent_id}")
+
+        # First deletion should succeed
+        assert response1.status_code == 204
+
+        # Setup mocks for second call - agent no longer exists
+        mock_agent_exists.return_value = False
+
+        # Execute second deletion of same agent
+        response2 = client.delete(f"/agents/{agent_id}")
+
+        # Second deletion should return 404
+        assert response2.status_code == 404
+        assert response2.json()["detail"] == "Agent not found"
+
+        # Verify call counts
+        assert mock_agent_exists.call_count == 2
+        assert (
+            mock_delete_agent.call_count == 1
+        )  # Only called for first successful attempt

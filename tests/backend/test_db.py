@@ -55,6 +55,95 @@ class TestAgentFunctions:
         db.ensure_seed_agents(["writer"])
         assert len(db.list_agents()) == 2
 
+    def test_create_agent(self, db_connection: sqlite3.Connection):
+        agent_data = db.create_agent("test_agent")
+        assert agent_data["name"] == "test_agent"
+        assert "id" in agent_data
+        assert agent_data["id"] is not None
+
+    def test_agent_exists(self, db_connection: sqlite3.Connection):
+        # Test non-existent agent
+        assert db.agent_exists(999) is False
+
+        # Create and test existing agent
+        agent_data = db.create_agent("test_agent")
+        assert db.agent_exists(agent_data["id"]) is True
+
+    def test_delete_agent_success(self, db_connection: sqlite3.Connection):
+        # Create an agent
+        agent_data = db.create_agent("agent_to_delete")
+        agent_id = agent_data["id"]
+
+        # Verify agent exists
+        assert db.agent_exists(agent_id) is True
+        assert len(db.list_agents()) == 1
+
+        # Delete agent
+        result = db.delete_agent(agent_id)
+
+        # Verify deletion was successful
+        assert result is True
+        assert db.agent_exists(agent_id) is False
+        assert len(db.list_agents()) == 0
+
+    def test_delete_agent_nonexistent(self, db_connection: sqlite3.Connection):
+        # Try to delete non-existent agent
+        result = db.delete_agent(999)
+
+        # Should return False for non-existent agent
+        assert result is False
+
+    def test_delete_agent_with_messages(self, db_connection: sqlite3.Connection):
+        # Create an agent
+        agent_data = db.create_agent("agent_with_messages")
+        agent_id = agent_data["id"]
+
+        # Add messages to the agent
+        db.insert_message(agent_id, "user", "Hello")
+        db.insert_message(agent_id, "assistant", "Hi there")
+
+        # Verify messages exist
+        messages = db.list_messages(agent_id)
+        assert len(messages) == 2
+
+        # Delete agent (should cascade delete messages)
+        result = db.delete_agent(agent_id)
+
+        # Verify agent and messages are deleted
+        assert result is True
+        assert db.agent_exists(agent_id) is False
+        assert len(db.list_messages(agent_id)) == 0
+        assert len(db.list_agents()) == 0
+
+    def test_delete_agent_cascade_only_affects_target(
+        self, db_connection: sqlite3.Connection
+    ):
+        # Create two agents
+        agent1_data = db.create_agent("agent1")
+        agent2_data = db.create_agent("agent2")
+        agent1_id = agent1_data["id"]
+        agent2_id = agent2_data["id"]
+
+        # Add messages to both agents
+        db.insert_message(agent1_id, "user", "Message from agent1")
+        db.insert_message(agent2_id, "user", "Message from agent2")
+
+        # Verify both agents have messages
+        assert len(db.list_messages(agent1_id)) == 1
+        assert len(db.list_messages(agent2_id)) == 1
+        assert len(db.list_agents()) == 2
+
+        # Delete only agent1
+        result = db.delete_agent(agent1_id)
+
+        # Verify only agent1 and its messages are deleted
+        assert result is True
+        assert db.agent_exists(agent1_id) is False
+        assert db.agent_exists(agent2_id) is True
+        assert len(db.list_messages(agent1_id)) == 0
+        assert len(db.list_messages(agent2_id)) == 1
+        assert len(db.list_agents()) == 1
+
 
 class TestMessageFunctions:
     @pytest.fixture

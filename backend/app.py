@@ -12,6 +12,7 @@ from agents.graph import stream_graph_events
 from backend.db import (
     agent_exists,
     create_agent,
+    delete_agent,
     initialize_database,
     insert_message,
     list_agents,
@@ -117,6 +118,28 @@ async def create_new_agent(request: CreateAgentRequest):
     except Exception as e:
         logger.error(f"Error creating agent: {e}")
         raise HTTPException(status_code=500, detail="Failed to create agent")
+
+
+@app.delete("/agents/{agent_id}", status_code=204)
+async def delete_existing_agent(agent_id: int):
+    logger.debug(f"Agent deletion requested for id: {agent_id}")
+
+    # Check if agent exists first
+    if not agent_exists(agent_id):
+        logger.warning(f"Agent {agent_id} not found")
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        deleted = delete_agent(agent_id)
+        if deleted:
+            logger.info(f"Successfully deleted agent with id {agent_id}")
+            return  # 204 No Content response
+        else:
+            logger.warning(f"Agent {agent_id} could not be deleted")
+            raise HTTPException(status_code=500, detail="Failed to delete agent")
+    except Exception as e:
+        logger.error(f"Error deleting agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete agent")
 
 
 @app.get("/agents/{agent_id}/messages", response_model=MessagesResponse)

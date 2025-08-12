@@ -56,6 +56,19 @@ def create_agent(name: str) -> dict[str, Any]:
         return dict(row)
 
 
+def delete_agent(agent_id: int) -> bool:
+    """Deletes an agent and all associated messages. Returns True if agent was deleted."""
+    with get_connection() as conn:
+        # First delete associated messages
+        conn.execute("DELETE FROM messages WHERE agent_id = ?", (agent_id,))
+
+        # Then delete the agent
+        cursor = conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
+
+        # Return True if a row was actually deleted
+        return cursor.rowcount > 0
+
+
 def ensure_seed_agents(names: list[str]):
     """Inserts a list of agent names if the agents table is empty."""
     with get_connection() as conn:
