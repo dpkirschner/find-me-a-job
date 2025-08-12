@@ -11,9 +11,18 @@ describe('ConversationsSidebar', () => {
       { id: 2, name: 'Beta' },
     ],
     activeAgentId: 1 as number | null,
+    conversations: [
+      { id: 1, agent_id: 1, thread_id: 'thread-1', created_at: '2023-01-01T00:00:00Z', updated_at: '2023-01-01T00:00:00Z' },
+    ],
+    activeThreadId: 'thread-1' as string | null,
     setActiveAgentId: jest.fn(),
+    setActiveThreadId: jest.fn(),
     leftCollapsed: false,
     setLeftCollapsed: jest.fn(),
+    onCreateAgent: jest.fn(),
+    onDeleteAgent: jest.fn(),
+    onCreateConversation: jest.fn(),
+    onDeleteConversation: jest.fn(),
   }
 
   beforeEach(() => {
@@ -109,11 +118,14 @@ describe('ConversationsSidebar', () => {
       const collapseButton = screen.getByRole('button', { name: 'Collapse sidebar' })
       expect(collapseButton).toBeInTheDocument()
       
-      const agentLinks = screen.getAllByRole('link')
-      expect(agentLinks).toHaveLength(2) // 2 agent links
+      const allLinks = screen.getAllByRole('link')
+      expect(allLinks).toHaveLength(3) // 2 agent links + 1 conversation link
       
       const alphaLink = screen.getByRole('link', { name: /Alpha/ })
       expect(alphaLink).toBeInTheDocument()
+      
+      const conversationLink = screen.getByRole('link', { name: /Thread/ })
+      expect(conversationLink).toBeInTheDocument()
     })
   })
 })

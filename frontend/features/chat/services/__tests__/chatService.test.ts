@@ -14,12 +14,18 @@ function createReadableStreamFromStrings(parts: string[]) {
   })
 }
 
-function createMockStreamResponse(streamParts: string[]) {
+function createMockStreamResponse(streamParts: string[], threadId?: string) {
   const body = createReadableStreamFromStrings(streamParts)
   return {
     ok: true,
     json: async () => ({}),
     body,
+    headers: {
+      get: jest.fn((key: string) => {
+        if (key === 'X-Thread-ID') return threadId || null
+        return null
+      })
+    }
   } as any
 }
 
@@ -34,7 +40,7 @@ describe('chatService', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     // @ts-expect-error override
-    global.fetch = jest.fn(async () => createMockStreamResponse(basicStreamData))
+    global.fetch = jest.fn(async () => createMockStreamResponse(basicStreamData, 'test-thread-123'))
   })
 
   afterEach(() => {

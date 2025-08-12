@@ -18,9 +18,14 @@ describe('ChatPage', () => {
       { id: 2, name: 'Agent B' },
     ],
     activeAgentId: 1,
+    conversations: [
+      { id: 1, agent_id: 1, thread_id: 'thread-1', created_at: '2023-01-01T00:00:00Z', updated_at: '2023-01-01T00:00:00Z' },
+    ],
+    activeThreadId: 'thread-1',
     setActiveAgentId: jest.fn(),
-    messagesByAgent: {
-      1: [
+    setActiveThreadId: jest.fn(),
+    messagesByConversation: {
+      'thread-1': [
         { role: 'user', content: 'hi' },
         { role: 'assistant', content: 'hello' },
       ],
@@ -31,6 +36,10 @@ describe('ChatPage', () => {
     setInput: jest.fn(),
     onSubmit: jest.fn(),
     stop: jest.fn(),
+    createAgent: jest.fn(),
+    deleteAgent: jest.fn(),
+    createConversation: jest.fn(),
+    deleteConversation: jest.fn(),
   }
 
   beforeEach(() => {
@@ -85,19 +94,32 @@ describe('ChatPage', () => {
       render(<ChatPage />)
       
       expect(screen.getByText('Pick an agent to start')).toBeInTheDocument()
-      expect(screen.getByText('Create or select a conversation in the left panel.')).toBeInTheDocument()
+      expect(screen.getByText('Create or select an agent in the left panel.')).toBeInTheDocument()
     })
 
-    test('shows "no messages" when agent has no messages', () => {
+    test('shows "no messages" when conversation has no messages', () => {
       mockUseChat.mockReturnValue({
         ...defaultMockData,
-        messagesByAgent: { 1: [] },
+        messagesByConversation: { 'thread-1': [] },
       })
       
       render(<ChatPage />)
       
       expect(screen.getByText('No messages yet')).toBeInTheDocument()
       expect(screen.getByText('Say hello to this agent.')).toBeInTheDocument()
+    })
+
+    test('shows "start a conversation" when no active thread', () => {
+      mockUseChat.mockReturnValue({
+        ...defaultMockData,
+        activeThreadId: null,
+        messagesByConversation: {},
+      })
+      
+      render(<ChatPage />)
+      
+      expect(screen.getByText('Start a conversation')).toBeInTheDocument()
+      expect(screen.getByText('Create a new conversation or select an existing one.')).toBeInTheDocument()
     })
   })
 
@@ -206,7 +228,7 @@ describe('ChatPage', () => {
   })
 
   describe('Message Display', () => {
-    test('renders all messages for active agent', () => {
+    test('renders all messages for active conversation', () => {
       const mockMessages = [
         { role: 'user', content: 'Hello there' },
         { role: 'assistant', content: 'Hi! How can I help?' },
@@ -215,7 +237,7 @@ describe('ChatPage', () => {
       
       mockUseChat.mockReturnValue({
         ...defaultMockData,
-        messagesByAgent: { 1: mockMessages },
+        messagesByConversation: { 'thread-1': mockMessages },
       })
       
       render(<ChatPage />)

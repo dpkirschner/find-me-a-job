@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
-import type { Agent } from '../types'
+import type { Agent, Conversation } from '../types'
 import classNames from '../../../lib/classNames'
 import { CreateAgentModal } from './CreateAgentModal'
+import { timeAgo } from '../../../lib/time'
 
 export function HashIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -13,12 +14,13 @@ export function HashIcon(props: React.SVGProps<SVGSVGElement>) {
 
 export interface SidebarItemProps {
   label: string
+  subtitle?: string
   active?: boolean
   onClick?: () => void
   onDelete?: () => void
 }
 
-export function SidebarItem({ label, active, onClick, onDelete }: SidebarItemProps) {
+export function SidebarItem({ label, subtitle, active, onClick, onDelete }: SidebarItemProps) {
   return (
     <div
       className={classNames(
@@ -34,7 +36,12 @@ export function SidebarItem({ label, active, onClick, onDelete }: SidebarItemPro
         className="flex items-center gap-2 flex-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
       >
         <HashIcon />
-        <span className="truncate">{label}</span>
+        <div className="flex-1 min-w-0">
+          <div className="truncate">{label}</div>
+          {subtitle && (
+            <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{subtitle}</div>
+          )}
+        </div>
       </button>
       {onDelete && (
         <button
@@ -56,11 +63,16 @@ export function SidebarItem({ label, active, onClick, onDelete }: SidebarItemPro
 export interface ConversationsSidebarProps {
   agents: Agent[]
   activeAgentId: number | null
+  conversations: Conversation[]
+  activeThreadId: string | null
   setActiveAgentId: (id: number) => void
+  setActiveThreadId: (threadId: string | null) => void
   leftCollapsed: boolean
   setLeftCollapsed: (v: boolean) => void
   onCreateAgent: (name: string) => void
   onDeleteAgent: (agentId: number) => void
+  onCreateConversation: (agentId: number) => void
+  onDeleteConversation: (threadId: string) => void
 }
 
 export function ChevronLeftIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -94,8 +106,25 @@ export function XIcon(props: React.SVGProps<SVGSVGElement>) {
   )
 }
 
-export function ConversationsSidebar({ agents, activeAgentId, setActiveAgentId, leftCollapsed, setLeftCollapsed, onCreateAgent, onDeleteAgent }: ConversationsSidebarProps) {
+export function ConversationsSidebar({ 
+  agents, 
+  activeAgentId, 
+  conversations, 
+  activeThreadId, 
+  setActiveAgentId, 
+  setActiveThreadId, 
+  leftCollapsed, 
+  setLeftCollapsed, 
+  onCreateAgent, 
+  onDeleteAgent,
+  onCreateConversation,
+  onDeleteConversation
+}: ConversationsSidebarProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
+  
+  // Group conversations by agent for the current active agent
+  const currentAgentConversations = conversations?.filter(c => c.agent_id === activeAgentId) || []
+  
   return (
     <aside
       className={classNames(
@@ -106,7 +135,6 @@ export function ConversationsSidebar({ agents, activeAgentId, setActiveAgentId, 
     >
       <div className="flex items-center justify-between gap-2 px-2 py-2 border-b">
         <div className="flex items-center gap-2">
-          {/* icon placeholder to align text */}
           <span className="inline-block w-4" />
           {!leftCollapsed && <span className="font-medium">Conversations</span>}
         </div>
@@ -120,17 +148,61 @@ export function ConversationsSidebar({ agents, activeAgentId, setActiveAgentId, 
           </button>
         </div>
       </div>
-      <nav className="p-2 space-y-1 overflow-y-auto flex-1" role="navigation" aria-label="Conversation list">
-        {agents.length === 0 && <div key="no-agents" className="text-sm text-gray-500 px-2 py-4">No agents yet</div>}
-        {agents.map((a) => (
-          <SidebarItem 
-            key={a.id} 
-            label={a.name} 
-            active={a.id === activeAgentId || false} 
-            onClick={() => setActiveAgentId(a.id)}
-            onDelete={() => onDeleteAgent(a.id)}
-          />
-        ))}
+      
+      <nav className="flex-1 overflow-y-auto" role="navigation" aria-label="Conversation list">
+        {/* Agents Section */}
+        <div className="p-2 border-b">
+          {!leftCollapsed && <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 px-2">AGENTS</div>}
+          <div className="space-y-1">
+            {agents.length === 0 && <div key="no-agents" className="text-sm text-gray-500 px-2 py-4">No agents yet</div>}
+            {agents.map((agent) => (
+              <SidebarItem 
+                key={`agent-${agent.id}`}
+                label={agent.name} 
+                active={agent.id === activeAgentId} 
+                onClick={() => setActiveAgentId(agent.id)}
+                onDelete={() => onDeleteAgent(agent.id)}
+              />
+            ))}
+          </div>
+        </div>
+        
+        {/* Conversations Section */}
+        {activeAgentId && (
+          <div className="p-2">
+            <div className="flex items-center justify-between mb-2">
+              {!leftCollapsed && (
+                <>
+                  <div className="text-xs font-medium text-gray-500 dark:text-gray-400 px-2">
+                    CONVERSATIONS
+                  </div>
+                  <button
+                    onClick={() => onCreateConversation(activeAgentId)}
+                    className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    aria-label="New conversation"
+                  >
+                    <PlusIcon />
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="space-y-1">
+              {currentAgentConversations.length === 0 && !leftCollapsed && (
+                <div className="text-sm text-gray-500 px-2 py-4">No conversations yet</div>
+              )}
+              {currentAgentConversations.map((conversation) => (
+                <SidebarItem 
+                  key={`conv-${conversation.thread_id}`}
+                  label={`Thread ${conversation.thread_id.slice(-8)}`}
+                  subtitle={timeAgo(conversation.updated_at)}
+                  active={conversation.thread_id === activeThreadId} 
+                  onClick={() => setActiveThreadId(conversation.thread_id)}
+                  onDelete={() => onDeleteConversation(conversation.thread_id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </nav>
       
       <div className="p-2 border-t">

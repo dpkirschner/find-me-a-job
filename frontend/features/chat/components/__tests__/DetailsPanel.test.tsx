@@ -16,6 +16,7 @@ describe('DetailsPanel', () => {
       { id: 2, name: 'Agent B' },
     ],
     activeAgentId: 1 as number | null,
+    activeThreadId: 'thread-1' as string | null,
     messagesForActive: [
       { role: 'user' as const, content: 'hi', created_at: '2020-01-01T00:00:00Z' },
       { role: 'assistant' as const, content: 'hello', created_at: '2020-01-01T00:01:00Z' },
@@ -35,6 +36,7 @@ describe('DetailsPanel', () => {
       render(<DetailsPanel {...defaultProps} />)
 
       expect(screen.getByText('Agent A')).toBeInTheDocument()
+      expect(screen.getByText('thread-1')).toBeInTheDocument()
       expect(screen.getByText((content, element) => {
         return element?.textContent === 'Messages: 2'
       })).toBeInTheDocument()
@@ -50,10 +52,15 @@ describe('DetailsPanel', () => {
 
   describe('Different States', () => {
     test('shows placeholder when no active agent selected', () => {
-      render(<DetailsPanel {...defaultProps} activeAgentId={null} />)
+      render(<DetailsPanel {...defaultProps} activeAgentId={null} activeThreadId={null} />)
 
+      // Should show agent name as dash in agent information section
+      expect(screen.getByText('Agent information')).toBeInTheDocument()
+      const agentSection = screen.getByText('Agent information').parentElement
+      expect(agentSection).toHaveTextContent('Name: —')
+      // Should show thread ID as dash
       expect(screen.getByText((content, element) => {
-        return element?.textContent === 'Name: —'
+        return element?.textContent === 'Thread ID: —'
       })).toBeInTheDocument()
     })
 
@@ -71,9 +78,8 @@ describe('DetailsPanel', () => {
     test('handles agent not found in agents list', () => {
       render(<DetailsPanel {...defaultProps} activeAgentId={999} />)
 
-      expect(screen.getByText((content, element) => {
-        return element?.textContent === 'Name: —'
-      })).toBeInTheDocument()
+      const agentSection = screen.getByText('Agent information').parentElement
+      expect(agentSection).toHaveTextContent('Name: —')
     })
   })
 

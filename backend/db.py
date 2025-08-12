@@ -43,10 +43,13 @@ def initialize_database():
     # Seed with default agents
     ensure_seed_agents(["orchestrator", "researcher", "writer"])
 
-    # Create a default conversation for the first agent
+    # Create a default conversation for the first agent if it doesn't exist
     agents = list_agents()
     if agents:
-        create_conversation(agents[0]["id"], "default-conversation")
+        # Check if default conversation already exists
+        existing_conversation = get_conversation_by_thread("default-conversation")
+        if not existing_conversation:
+            create_conversation(agents[0]["id"], "default-conversation")
 
 
 def list_agents() -> list[dict[str, Any]]:

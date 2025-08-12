@@ -126,3 +126,52 @@ Frontend Integration Guide: Agent → Conversation Model
   - Legacy endpoints preserved - /agents/{id}/messages still works but marked deprecated
   - Automatic thread creation - If no thread_id provided, one is auto-generated
   - Gradual migration - Frontend can adopt conversation features incrementally
+
+## Implementation Plan
+
+### Phase 1: Core Infrastructure
+1. **Update types** (`frontend/features/chat/types.ts`)
+   - Add `Conversation` interface with id, agent_id, thread_id, created_at, updated_at
+   - Add `thread_id?: string` to ChatRequest interface
+   - Update state interfaces for conversation management
+
+2. **Create conversation service** (`frontend/features/chat/services/conversationService.ts`)
+   - `getConversations(agentId: number)` - GET /agents/{agent_id}/conversations
+   - `createConversation(agentId: number, threadId?: string)` - POST /conversations
+   - `getConversationMessages(threadId: string)` - GET /conversations/{thread_id}/messages
+   - `deleteConversation(threadId: string)` - DELETE /conversations/{thread_id}
+
+3. **Update chat service** (`frontend/features/chat/services/chatService.ts`)
+   - Add `thread_id?: string` parameter to `StreamChatOptions`
+   - Extract `X-Thread-ID` header from response
+   - Return thread_id from streamChat function
+
+### Phase 2: State Management Migration
+4. **Migrate useChat hook** (`frontend/features/chat/hooks/useChat.ts`)
+   - Replace `messagesByAgent` with conversation-based state
+   - Add `conversations`, `activeThreadId` to state
+   - Load conversations when agent is selected
+   - Handle conversation switching and message loading
+   - Update onSubmit to include thread_id
+
+### Phase 3: UI Components
+5. **Update ConversationsSidebar** (`frontend/features/chat/components/ConversationsSidebar.tsx`)
+   - Show conversations grouped by agent instead of just agents
+   - Add "New Conversation" button for each agent
+   - Handle conversation selection and deletion
+   - Show conversation creation timestamps
+
+6. **Update ChatPage** (`frontend/features/chat/components/ChatPage.tsx`)
+   - Handle conversation-based message display
+   - Update empty states for conversation selection
+   - Pass conversation context to components
+
+### Current State Analysis
+- **Agent-centric**: Currently using `messagesByAgent: Record<number, UIMessage[]>`
+- **Direct messages**: Messages loaded directly per agent via `/agents/{id}/messages`
+- **No conversation context**: No thread persistence or conversation management
+
+### Target State
+- **Conversation-centric**: `conversations: Conversation[]`, `messagesByConversation: Record<string, UIMessage[]>`
+- **Thread-aware**: All chat requests include thread_id for context preservation
+- **Multi-conversation**: Users can maintain multiple conversations per agent

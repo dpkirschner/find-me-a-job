@@ -20,7 +20,25 @@ function useTheme() {
 }
 
 export function ChatPage() {
-  const { agents, activeAgentId, setActiveAgentId, messagesByAgent, isLoading, isStreaming, input, setInput, onSubmit, stop, createAgent, deleteAgent } = useChat()
+  const { 
+    agents, 
+    activeAgentId, 
+    conversations,
+    activeThreadId,
+    setActiveAgentId, 
+    setActiveThreadId,
+    messagesByConversation, 
+    isLoading, 
+    isStreaming, 
+    input, 
+    setInput, 
+    onSubmit, 
+    stop, 
+    createAgent, 
+    deleteAgent,
+    createConversation,
+    deleteConversation
+  } = useChat()
   const { dark, setDark } = useTheme()
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false)
@@ -28,8 +46,8 @@ export function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
 
   const messagesForActive = useMemo(
-    () => (activeAgentId != null ? messagesByAgent[activeAgentId] || [] : []),
-    [messagesByAgent, activeAgentId]
+    () => (activeThreadId != null ? messagesByConversation[activeThreadId] || [] : []),
+    [messagesByConversation, activeThreadId]
   )
 
   React.useEffect(() => {
@@ -44,11 +62,16 @@ export function ChatPage() {
         <ConversationsSidebar
           agents={agents}
           activeAgentId={activeAgentId}
+          conversations={conversations}
+          activeThreadId={activeThreadId}
           setActiveAgentId={setActiveAgentId}
+          setActiveThreadId={setActiveThreadId}
           leftCollapsed={leftCollapsed}
           setLeftCollapsed={setLeftCollapsed}
           onCreateAgent={createAgent}
           onDeleteAgent={deleteAgent}
+          onCreateConversation={createConversation}
+          onDeleteConversation={deleteConversation}
         />
 
         <main className="min-h-0 flex flex-col" role="main">
@@ -63,7 +86,15 @@ export function ChatPage() {
                 <div>
                   <div className="mx-auto mb-2 h-10 w-10 rounded-full grid place-items-center bg-gray-200 dark:bg-gray-800">💬</div>
                   <div className="font-medium">Pick an agent to start</div>
-                  <div className="text-sm">Create or select a conversation in the left panel.</div>
+                  <div className="text-sm">Create or select an agent in the left panel.</div>
+                </div>
+              </div>
+            ) : activeThreadId == null ? (
+              <div className="h-full grid place-items-center text-center text-gray-500">
+                <div>
+                  <div className="mx-auto mb-2 h-10 w-10 rounded-full grid place-items-center bg-gray-200 dark:bg-gray-800">🗨️</div>
+                  <div className="font-medium">Start a conversation</div>
+                  <div className="text-sm">Create a new conversation or select an existing one.</div>
                 </div>
               </div>
             ) : messagesForActive.length === 0 ? (
@@ -92,7 +123,7 @@ export function ChatPage() {
           />
         </main>
 
-        <DetailsPanel agents={agents} activeAgentId={activeAgentId} messagesForActive={messagesForActive} />
+        <DetailsPanel agents={agents} activeAgentId={activeAgentId} activeThreadId={activeThreadId} messagesForActive={messagesForActive} />
       </div>
 
       {leftDrawerOpen && (

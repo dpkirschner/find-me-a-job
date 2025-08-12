@@ -7,12 +7,24 @@ import logger from '../../../../lib/logger'
 // Mock service dependencies
 const mockGetAgents = jest.fn()
 const mockGetMessages = jest.fn()
+const mockGetConversations = jest.fn()
+const mockGetConversationMessages = jest.fn()
+const mockCreateConversation = jest.fn()
+const mockDeleteConversation = jest.fn()
 const mockStreamChat = jest.fn()
 
 jest.mock('../../services/agentService', () => ({
   __esModule: true,
   getAgents: (...args: any[]) => mockGetAgents(...args),
   getMessages: (...args: any[]) => mockGetMessages(...args),
+}))
+
+jest.mock('../../services/conversationService', () => ({
+  __esModule: true,
+  getConversations: (...args: any[]) => mockGetConversations(...args),
+  getConversationMessages: (...args: any[]) => mockGetConversationMessages(...args),
+  createConversation: (...args: any[]) => mockCreateConversation(...args),
+  deleteConversation: (...args: any[]) => mockDeleteConversation(...args),
 }))
 
 jest.mock('../../services/chatService', () => ({
@@ -35,6 +47,11 @@ describe('useChat', () => {
     { id: 2, name: 'Agent B' },
   ]
 
+  const defaultConversations = [
+    { id: 1, agent_id: 1, thread_id: 'thread-1', created_at: '2020-01-01T00:00:00Z', updated_at: '2020-01-01T00:01:00Z' },
+    { id: 2, agent_id: 2, thread_id: 'thread-2', created_at: '2020-01-01T00:00:00Z', updated_at: '2020-01-01T00:01:00Z' },
+  ]
+
   const defaultMessages = [
     { id: 1, agent_id: 1, role: 'user' as const, content: 'Hello', created_at: '2020-01-01T00:00:00Z' },
     { id: 2, agent_id: 1, role: 'assistant' as const, content: 'Hi there!', created_at: '2020-01-01T00:01:00Z' },
@@ -44,10 +61,17 @@ describe('useChat', () => {
     jest.clearAllMocks()
     mockGetAgents.mockResolvedValue(defaultAgents)
     mockGetMessages.mockResolvedValue(defaultMessages)
+    mockGetConversations.mockImplementation((agentId: number) => {
+      return Promise.resolve(defaultConversations.filter(c => c.agent_id === agentId))
+    })
+    mockGetConversationMessages.mockResolvedValue(defaultMessages)
+    mockCreateConversation.mockResolvedValue(defaultConversations[0])
+    mockDeleteConversation.mockResolvedValue(undefined)
     mockStreamChat.mockImplementation(async ({ onToken }: any) => {
       onToken('Hello')
       onToken(' from')
       onToken(' assistant')
+      return { threadId: 'new-thread-id' }
     })
     jest.clearAllTimers()
   })
@@ -58,7 +82,9 @@ describe('useChat', () => {
 
       expect(result.current.agents).toEqual([])
       expect(result.current.activeAgentId).toBeNull()
-      expect(result.current.messagesByAgent).toEqual({})
+      expect(result.current.conversations).toEqual([])
+      expect(result.current.activeThreadId).toBeNull()
+      expect(result.current.messagesByConversation).toEqual({})
       expect(result.current.input).toBe('')
       expect(result.current.isLoading).toBe(false)
       expect(result.current.isStreaming).toBe(false)
@@ -94,7 +120,7 @@ describe('useChat', () => {
   })
 
   describe('Agent Selection', () => {
-    test('loads messages when agent is selected', async () => {
+    test('loads conversations and messages when agent is selected', async () => {
       const { result } = renderHook(() => useChat())
 
       await waitFor(() => {
@@ -102,14 +128,23 @@ describe('useChat', () => {
       })
 
       await waitFor(() => {
-        expect(result.current.messagesByAgent[1]).toBeDefined()
+        expect(result.current.conversations.length).toBeGreaterThan(0)
       })
 
-      expect(result.current.messagesByAgent[1]).toHaveLength(2)
-      expect(mockGetMessages).toHaveBeenCalledWith(1)
+      await waitFor(() => {
+        expect(result.current.activeThreadId).toBe('thread-1')
+      })
+
+      await waitFor(() => {
+        expect(result.current.messagesByConversation['thread-1']).toBeDefined()
+      })
+
+      expect(result.current.messagesByConversation['thread-1']).toHaveLength(2)
+      expect(mockGetConversations).toHaveBeenCalledWith(1)
+      expect(mockGetConversationMessages).toHaveBeenCalledWith('thread-1')
     })
 
-    test('switches to different agent and loads its messages', async () => {
+    test('switches to different agent and loads its conversations', async () => {
       const { result } = renderHook(() => useChat())
 
       await waitFor(() => {
@@ -123,14 +158,14 @@ describe('useChat', () => {
       expect(result.current.activeAgentId).toBe(2)
 
       await waitFor(() => {
-        expect(result.current.messagesByAgent[2]).toBeDefined()
+        expect(result.current.conversations.length).toBeGreaterThan(0)
       })
 
-      expect(mockGetMessages).toHaveBeenCalledWith(2)
+      expect(mockGetConversations).toHaveBeenCalledWith(2)
     })
 
-    test('handles message loading failure by setting empty array', async () => {
-      mockGetMessages.mockRejectedValueOnce(new Error('Failed to load messages'))
+    test('handles conversation loading failure gracefully', async () => {
+      mockGetConversations.mockRejectedValueOnce(new Error('Failed to load conversations'))
       const { result } = renderHook(() => useChat())
 
       await waitFor(() => {
@@ -138,11 +173,11 @@ describe('useChat', () => {
       })
 
       await waitFor(() => {
-        expect(result.current.messagesByAgent[1]).toEqual([])
+        expect(result.current.conversations).toEqual([])
       })
 
       expect(logger.error).toHaveBeenCalledWith(
-        'Failed to load messages for agent',
+        'Failed to load conversations for agent',
         1,
         expect.any(Error)
       )
@@ -189,7 +224,7 @@ describe('useChat', () => {
 
       await waitFor(() => expect(result.current.activeAgentId).toBe(1))
       
-      await waitFor(() => expect(result.current.messagesByAgent[1]).toBeDefined())
+      await waitFor(() => expect(result.current.activeThreadId).toBe('thread-1'))
 
       act(() => {
         result.current.setInput('Test prompt')
@@ -199,7 +234,7 @@ describe('useChat', () => {
         await result.current.onSubmit()
       })
 
-      const messages = result.current.messagesByAgent[1]
+      const messages = result.current.messagesByConversation['thread-1']
       const userMessage = messages.find(m => m.content === 'Test prompt')
       const assistantMessage = messages.find(m => m.content === 'Hello from assistant')
 
@@ -212,6 +247,7 @@ describe('useChat', () => {
         expect.objectContaining({
           message: 'Test prompt',
           agentId: 1,
+          threadId: 'thread-1',
           onToken: expect.any(Function)
         })
       )
@@ -324,7 +360,7 @@ describe('useChat', () => {
         expect(result.current.activeAgentId).toBe(1)
       })
       
-      await waitFor(() => expect(result.current.messagesByAgent[1]).toBeDefined())
+      await waitFor(() => expect(result.current.activeThreadId).toBe('thread-1'))
 
       act(() => {
         result.current.setInput('Test prompt')
@@ -334,7 +370,7 @@ describe('useChat', () => {
         await result.current.onSubmit()
       })
 
-      const messages = result.current.messagesByAgent[1]
+      const messages = result.current.messagesByConversation['thread-1']
       const lastMessage = messages[messages.length - 1]
 
       expect(lastMessage.role).toBe('assistant')
@@ -352,11 +388,11 @@ describe('useChat', () => {
       })
 
       await waitFor(() => {
-        expect(result.current.messagesByAgent[1]).toBeDefined()
+        expect(result.current.messagesByConversation['thread-1']).toBeDefined()
       })
 
-      expect(Object.keys(result.current.messagesByAgent)).toContain('1')
-      expect(result.current.messagesByAgent[1]).toHaveLength(2)
+      expect(Object.keys(result.current.messagesByConversation)).toContain('thread-1')
+      expect(result.current.messagesByConversation['thread-1']).toHaveLength(2)
     })
   })
 })
