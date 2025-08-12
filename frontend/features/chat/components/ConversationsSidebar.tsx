@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type { Agent } from '../types'
 import classNames from '../../../lib/classNames'
+import { CreateAgentModal } from './CreateAgentModal'
 
 export function HashIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -39,6 +40,7 @@ export interface ConversationsSidebarProps {
   setActiveAgentId: (id: number) => void
   leftCollapsed: boolean
   setLeftCollapsed: (v: boolean) => void
+  onCreateAgent: (name: string) => void
 }
 
 export function ChevronLeftIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -56,7 +58,16 @@ export function ChevronRightIcon(props: React.SVGProps<SVGSVGElement>) {
   )
 }
 
-export function ConversationsSidebar({ agents, activeAgentId, setActiveAgentId, leftCollapsed, setLeftCollapsed }: ConversationsSidebarProps) {
+export function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...props} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 5v14m-7-7h14" />
+    </svg>
+  )
+}
+
+export function ConversationsSidebar({ agents, activeAgentId, setActiveAgentId, leftCollapsed, setLeftCollapsed, onCreateAgent }: ConversationsSidebarProps) {
+  const [isModalOpen, setIsModalOpen] = useState(false)
   return (
     <aside
       className={classNames(
@@ -81,12 +92,32 @@ export function ConversationsSidebar({ agents, activeAgentId, setActiveAgentId, 
           </button>
         </div>
       </div>
-      <nav className="p-2 space-y-1 overflow-y-auto" role="navigation" aria-label="Conversation list">
-        {agents.length === 0 && <div className="text-sm text-gray-500 px-2 py-4">No agents yet</div>}
+      <nav className="p-2 space-y-1 overflow-y-auto flex-1" role="navigation" aria-label="Conversation list">
+        {agents.length === 0 && <div key="no-agents" className="text-sm text-gray-500 px-2 py-4">No agents yet</div>}
         {agents.map((a) => (
           <SidebarItem key={a.id} label={a.name} active={a.id === activeAgentId || false} onClick={() => setActiveAgentId(a.id)} />
         ))}
       </nav>
+      
+      <div className="p-2 border-t">
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className={classNames(
+            'w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
+            'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
+          )}
+          aria-label="Create new agent"
+        >
+          <PlusIcon />
+          {!leftCollapsed && <span>New Agent</span>}
+        </button>
+      </div>
+      
+      <CreateAgentModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onCreateAgent={onCreateAgent}
+      />
     </aside>
   )
 }

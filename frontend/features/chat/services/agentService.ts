@@ -15,4 +15,17 @@ export async function getMessages(agentId: number): Promise<ApiMessages['message
   return data.messages
 }
 
+export async function createAgent(name: string): Promise<Agent> {
+  const res = await fetch(`${API_BASE_URL}/agents`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) throw new Error(`Failed to create agent: ${res.status}`)
+  const agent: Agent = await res.json()
+  return agent
+}
+
 

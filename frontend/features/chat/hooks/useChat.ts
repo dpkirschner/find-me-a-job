@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Agent, UIMessage } from '../types'
-import { getAgents, getMessages } from '../services/agentService'
+import { getAgents, getMessages, createAgent } from '../services/agentService'
 import { streamChat } from '../services/chatService'
 import logger from '../../../lib/logger'
 
@@ -18,6 +18,7 @@ export interface UseChatApi extends UseChatState {
   setInput: (v: string) => void
   onSubmit: (e?: React.FormEvent) => Promise<void>
   stop: () => void
+  createAgent: (name: string) => Promise<void>
 }
 
 export function useChat(): UseChatApi {
@@ -144,6 +145,16 @@ export function useChat(): UseChatApi {
 
   const stop = useCallback(() => abortRef.current?.abort(), [])
 
+  const handleCreateAgent = useCallback(async (name: string) => {
+    try {
+      const newAgent = await createAgent(name)
+      setAgents((prev) => [...prev, newAgent])
+      setActiveAgentId(newAgent.id)
+    } catch (e) {
+      logger.error('Failed to create agent', e)
+    }
+  }, [])
+
   return {
     agents,
     activeAgentId,
@@ -155,6 +166,7 @@ export function useChat(): UseChatApi {
     setInput,
     onSubmit,
     stop,
+    createAgent: handleCreateAgent,
   }
 }
 
