@@ -16,19 +16,22 @@ class TestLLMNode:
     async def test_llm_node_returns_reply(self, mock_chat_ollama):
         from unittest.mock import AsyncMock
 
+        from langchain_core.messages import AIMessage, HumanMessage
+
         mock_llm_instance = AsyncMock()
-        mock_response = Mock()
-        mock_response.content = "This is a test response"
+        mock_response = AIMessage(content="This is a test response")
         mock_llm_instance.ainvoke.return_value = mock_response
         mock_chat_ollama.return_value = mock_llm_instance
 
-        test_state = {"message": "Hello, how are you?", "reply": ""}
+        # Create proper GraphState with messages list
+        test_state = {"messages": [HumanMessage(content="Hello, how are you?")]}
         result = await llm_node(test_state)
 
-        assert "reply" in result
-        assert result["reply"] == "This is a test response"
+        assert "messages" in result
+        assert len(result["messages"]) == 1
+        assert result["messages"][0].content == "This is a test response"
         mock_chat_ollama.assert_called_once_with(model="gpt-oss")
-        mock_llm_instance.ainvoke.assert_called_once_with("Hello, how are you?")
+        mock_llm_instance.ainvoke.assert_called_once()
 
 
 class TestGraphStructure:

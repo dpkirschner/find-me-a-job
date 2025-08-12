@@ -1,4 +1,4 @@
--- sql/0001_init.sql (minimal)
+-- sql/0001_init.sql (LangGraph optimized)
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS agents (
@@ -7,14 +7,55 @@ CREATE TABLE IF NOT EXISTS agents (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS messages (
+-- Conversations/threads table for LangGraph checkpointing
+CREATE TABLE IF NOT EXISTS conversations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agent_id INTEGER NOT NULL,
-  role TEXT NOT NULL CHECK(role IN ('user','assistant','system','tool')),
-  content TEXT NOT NULL,
+  thread_id TEXT UNIQUE NOT NULL, -- LangGraph thread identifier
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_messages_agent ON messages(agent_id);
-CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
+-- Messages table optimized for LangChain message types
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversation_id INTEGER NOT NULL,
+  
+  -- LangChain message identification
+  message_id TEXT UNIQUE NOT NULL, -- LangChain message.id (for deduplication)
+  message_type TEXT NOT NULL CHECK(message_type IN ('human', 'ai', 'system', 'tool')),
+  
+  -- Core message content
+  content TEXT NOT NULL,
+  
+  -- Tool-related fields for AIMessage and ToolMessage
+  tool_calls TEXT, -- JSON array of tool calls for AIMessage
+  tool_call_id TEXT, -- For ToolMessage linking to AIMessage tool calls
+  
+  -- Additional LangChain features
+  additional_kwargs TEXT, -- JSON for extra LangChain message properties
+  
+  -- Ordering and timestamps
+  sequence_number INTEGER NOT NULL, -- Message order in conversation
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_conversations_agent ON conversations(agent_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_thread ON conversations(thread_id);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_messages_sequence ON messages(conversation_id, sequence_number);
+CREATE INDEX IF NOT EXISTS idx_messages_type ON messages(message_type);
+CREATE INDEX IF NOT EXISTS idx_messages_tool_call ON messages(tool_call_id);
+
+-- Trigger to update conversation updated_at
+CREATE TRIGGER IF NOT EXISTS update_conversation_timestamp 
+AFTER INSERT ON messages
+BEGIN
+  UPDATE conversations 
+  SET updated_at = CURRENT_TIMESTAMP 
+  WHERE id = NEW.conversation_id;
+END;
