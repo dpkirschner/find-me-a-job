@@ -190,16 +190,27 @@ export function ConversationsSidebar({
               {currentAgentConversations.length === 0 && !leftCollapsed && (
                 <div className="text-sm text-gray-500 px-2 py-4">No conversations yet</div>
               )}
-              {currentAgentConversations.map((conversation) => (
-                <SidebarItem 
-                  key={`conv-${conversation.thread_id}`}
-                  label={`Thread ${conversation.thread_id.slice(-8)}`}
-                  subtitle={timeAgo(conversation.updated_at)}
-                  active={conversation.thread_id === activeThreadId} 
-                  onClick={() => setActiveThreadId(conversation.thread_id)}
-                  onDelete={() => onDeleteConversation(conversation.thread_id)}
-                />
-              ))}
+              {currentAgentConversations.map((conversation) => {
+                // Check if this is a temporary conversation
+                const isTemp = conversation.thread_id.startsWith('temp-')
+                const label = isTemp 
+                  ? 'Creating conversation...' 
+                  : `Thread ${conversation.thread_id.slice(-8)}`
+                const subtitle = isTemp 
+                  ? 'Just now' 
+                  : timeAgo(conversation.updated_at)
+                
+                return (
+                  <SidebarItem 
+                    key={`conv-${conversation.thread_id}`}
+                    label={label}
+                    subtitle={subtitle}
+                    active={conversation.thread_id === activeThreadId} 
+                    onClick={() => setActiveThreadId(conversation.thread_id)}
+                    onDelete={isTemp ? undefined : () => onDeleteConversation(conversation.thread_id)}
+                  />
+                )
+              })}
             </div>
           </div>
         )}

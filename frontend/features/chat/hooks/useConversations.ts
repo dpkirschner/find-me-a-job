@@ -12,14 +12,18 @@ export interface UseConversationsApi extends UseConversationsState {
   setActiveThreadId: (threadId: string | null) => void
   createConversation: (agentId: number) => Promise<void>
   deleteConversation: (threadId: string) => Promise<void>
+  refreshConversations: () => Promise<void>
+  addPlaceholderConversation: (tempThreadId: string) => void
+  replacePlaceholderWithReal: (tempThreadId: string, realThreadId: string) => Promise<void>
+  removePlaceholder: (tempThreadId: string) => void
 }
 
 export function useConversations(agentId: number | null): UseConversationsApi {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
 
-  // Load conversations for the given agent
-  useEffect(() => {
+  // Function to load conversations for the current agent
+  const loadConversations = useCallback(async (shouldSetActiveThread = true) => {
     if (agentId == null) {
       // Clear state when no agent is selected
       setConversations([])
@@ -27,28 +31,48 @@ export function useConversations(agentId: number | null): UseConversationsApi {
       return
     }
 
-    let cancelled = false
-    ;(async () => {
-      try {
-        const convs = await getConversations(agentId)
-        if (cancelled) return
-        setConversations(convs)
-        // Set active thread to most recent conversation or null
-        if (convs.length > 0 && activeThreadId == null) {
+    try {
+      const convs = await getConversations(agentId)
+      setConversations(convs)
+      // Set active thread to most recent conversation for this agent
+      if (shouldSetActiveThread) {
+        if (convs.length > 0) {
           setActiveThreadId(convs[0].thread_id)
-        } else if (convs.length === 0) {
+        } else {
           setActiveThreadId(null)
         }
-      } catch (e) {
-        logger.error('Failed to load conversations for agent', agentId, e)
-        setConversations([])
+      }
+    } catch (e) {
+      if (e instanceof Error) {
+        if (e.message.includes('404')) {
+          logger.warn(`Agent ${agentId} not found`)
+        } else if (e.message === 'Failed to fetch') {
+          logger.error(`Cannot connect to backend server when loading conversations for agent ${agentId}`)
+        } else {
+          logger.error('Failed to load conversations for agent', agentId, e)
+        }
+      } else {
+        logger.error('Unknown error loading conversations for agent', agentId, e)
+      }
+      setConversations([])
+      if (shouldSetActiveThread) {
         setActiveThreadId(null)
+      }
+    }
+  }, [agentId])
+
+  // Load conversations when agent changes
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!cancelled) {
+        await loadConversations()
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [agentId])
+  }, [loadConversations])
 
   const handleCreateConversation = useCallback(async (agentId: number) => {
     try {
@@ -82,12 +106,52 @@ export function useConversations(agentId: number | null): UseConversationsApi {
     }
   }, [activeThreadId])
 
+  // Public refresh function
+  const refreshConversations = useCallback(async () => {
+    await loadConversations(false) // Don't change active thread when refreshing
+  }, [loadConversations])
+
+  // Note: Automatic refresh is now handled by explicit placeholder management in useChat
+
+  // Add a placeholder conversation to show immediate feedback
+  const addPlaceholderConversation = useCallback((tempThreadId: string) => {
+    if (agentId == null) return
+    
+    const placeholder: Conversation = {
+      id: -1, // Temporary ID
+      agent_id: agentId,
+      thread_id: tempThreadId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    
+    setConversations(prev => [placeholder, ...prev])
+  }, [agentId])
+
+  // Replace placeholder with real conversation data
+  const replacePlaceholderWithReal = useCallback(async (tempThreadId: string, realThreadId: string) => {
+    // First remove the placeholder
+    setConversations(prev => prev.filter(c => c.thread_id !== tempThreadId))
+    
+    // Then refresh to get the real conversation
+    await loadConversations(false)
+  }, [loadConversations])
+
+  // Remove placeholder (e.g., on error)
+  const removePlaceholder = useCallback((tempThreadId: string) => {
+    setConversations(prev => prev.filter(c => c.thread_id !== tempThreadId))
+  }, [])
+
   return {
     conversations,
     activeThreadId,
     setActiveThreadId,
     createConversation: handleCreateConversation,
     deleteConversation: handleDeleteConversation,
+    refreshConversations,
+    addPlaceholderConversation,
+    replacePlaceholderWithReal,
+    removePlaceholder,
   }
 }
 

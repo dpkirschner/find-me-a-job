@@ -129,6 +129,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Thread-ID"],  # Allow frontend to access the X-Thread-ID header
 )
 
 

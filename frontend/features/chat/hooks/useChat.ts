@@ -98,6 +98,12 @@ export function useChat(): UseChatApi {
     }))
     setInput('')
 
+    // If this is a new conversation, add a placeholder to the sidebar
+    if (!currentThreadId) {
+      conversationsApi.addPlaceholderConversation(tempThreadId)
+      conversationsApi.setActiveThreadId(tempThreadId)
+    }
+
     try {
       const result = await streamChat({
         message: userMsg.content,
@@ -121,8 +127,6 @@ export function useChat(): UseChatApi {
 
       // Handle new thread creation
       if (result.threadId && !currentThreadId) {
-        conversationsApi.setActiveThreadId(result.threadId)
-        
         // Move messages from temp thread to the real thread
         setMessagesByConversation((prev) => {
           const messagesFromTemp = prev[tempThreadId] || []
@@ -131,9 +135,17 @@ export function useChat(): UseChatApi {
           return newState
         })
         
-        // The useConversations hook will automatically refresh when activeThreadId changes
+        // Replace placeholder with real conversation and set active thread
+        conversationsApi.setActiveThreadId(result.threadId)
+        await conversationsApi.replacePlaceholderWithReal(tempThreadId, result.threadId)
       }
     } catch (err: any) {
+      // Remove placeholder on error if this was a new conversation
+      if (!currentThreadId) {
+        conversationsApi.removePlaceholder(tempThreadId)
+        conversationsApi.setActiveThreadId(null)
+      }
+
       if (err?.name === 'AbortError') {
         logger.info('Aborted by user')
         setMessagesByConversation((prev) => {

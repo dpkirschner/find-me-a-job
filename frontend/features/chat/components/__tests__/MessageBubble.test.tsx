@@ -107,15 +107,26 @@ describe('MessageBubble', () => {
       expect(messageContainer).toBeInTheDocument()
     })
 
-    test('preserves whitespace and line breaks', () => {
+    test('preserves whitespace and line breaks for user messages', () => {
       const multilineMessage = { 
-        role: 'assistant' as const, 
+        role: 'user' as const, 
         content: 'Line 1\nLine 2\n\nLine 4' 
       }
       render(<MessageBubble m={multilineMessage} />)
       
       const messageElement = screen.getByText(/Line 1/).closest('div')
       expect(messageElement).toHaveClass('whitespace-pre-wrap')
+    })
+
+    test('uses markdown rendering for assistant messages', () => {
+      const assistantMessage = { 
+        role: 'assistant' as const, 
+        content: 'Line 1\nLine 2\n\nLine 4' 
+      }
+      render(<MessageBubble m={assistantMessage} />)
+      
+      const messageElement = screen.getByText(/Line 1/).closest('div')
+      expect(messageElement).not.toHaveClass('whitespace-pre-wrap')
     })
   })
 })

@@ -30,7 +30,7 @@ const components: Components = {
 export function MarkdownRenderer({ children }: { children: string }) {
   return (
     <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={components}>
-      {children}
+      {children.trim()}
     </ReactMarkdown>
   )
 }

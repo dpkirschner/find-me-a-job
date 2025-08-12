@@ -24,8 +24,8 @@ export async function createAgent(name: string): Promise<Agent> {
     body: JSON.stringify({ name }),
   })
   if (!res.ok) throw new Error(`Failed to create agent: ${res.status}`)
-  const agent: Agent = await res.json()
-  return agent
+  const data = await res.json()
+  return data.agent
 }
 
 export async function deleteAgent(agentId: number): Promise<void> {
