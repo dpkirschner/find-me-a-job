@@ -69,7 +69,7 @@ export interface ConversationsSidebarProps {
   setActiveThreadId: (threadId: string | null) => void
   leftCollapsed: boolean
   setLeftCollapsed: (v: boolean) => void
-  onCreateAgent: (name: string) => void
+  onCreateAgent: (name: string, systemPrompt?: string) => void
   onDeleteAgent: (agentId: number) => void
   onCreateConversation: (agentId: number) => void
   onDeleteConversation: (threadId: string) => void

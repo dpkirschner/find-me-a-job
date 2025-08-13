@@ -34,7 +34,8 @@ export function ChatPage() {
     setInput, 
     onSubmit, 
     stop, 
-    createAgent, 
+    createAgent,
+    updateAgent,
     deleteAgent,
     createConversation,
     deleteConversation
@@ -123,7 +124,13 @@ export function ChatPage() {
           />
         </main>
 
-        <DetailsPanel agents={agents} activeAgentId={activeAgentId} activeThreadId={activeThreadId} messagesForActive={messagesForActive} />
+        <DetailsPanel 
+          agents={agents} 
+          activeAgentId={activeAgentId} 
+          activeThreadId={activeThreadId} 
+          messagesForActive={messagesForActive}
+          onUpdateAgent={updateAgent}
+        />
       </div>
 
       {leftDrawerOpen && (

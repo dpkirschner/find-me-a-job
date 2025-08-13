@@ -1,4 +1,4 @@
-export interface Agent { id: number; name: string }
+export interface Agent { id: number; name: string; system_prompt: string | null }
 export interface ApiAgents { agents: Agent[] }
 
 export interface Conversation {

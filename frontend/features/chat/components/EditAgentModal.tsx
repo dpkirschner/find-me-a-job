@@ -1,9 +1,11 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import type { Agent } from '../types'
 
-interface CreateAgentModalProps {
+interface EditAgentModalProps {
   isOpen: boolean
   onClose: () => void
-  onCreateAgent: (name: string, systemPrompt?: string) => void
+  agent: Agent | null
+  onUpdateAgent: (agentId: number, name: string, systemPrompt?: string) => void
 }
 
 export function XIcon(props: React.SVGProps<SVGSVGElement>) {
@@ -14,34 +16,43 @@ export function XIcon(props: React.SVGProps<SVGSVGElement>) {
   )
 }
 
-export function CreateAgentModal({ isOpen, onClose, onCreateAgent }: CreateAgentModalProps) {
+export function EditAgentModal({ isOpen, onClose, agent, onUpdateAgent }: EditAgentModalProps) {
   const [agentName, setAgentName] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
 
+  // Initialize form with agent data when modal opens
+  useEffect(() => {
+    if (agent) {
+      setAgentName(agent.name)
+      setSystemPrompt(agent.system_prompt || '')
+    }
+  }, [agent])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (agentName.trim()) {
-      onCreateAgent(agentName.trim(), systemPrompt.trim() || undefined)
-      setAgentName('')
-      setSystemPrompt('')
+    if (agentName.trim() && agent) {
+      onUpdateAgent(agent.id, agentName.trim(), systemPrompt.trim() || undefined)
       onClose()
     }
   }
 
   const handleClose = () => {
-    setAgentName('')
-    setSystemPrompt('')
+    // Reset form to original values
+    if (agent) {
+      setAgentName(agent.name)
+      setSystemPrompt(agent.system_prompt || '')
+    }
     onClose()
   }
 
-  if (!isOpen) return null
+  if (!isOpen || !agent) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black bg-opacity-50" onClick={handleClose} />
       <div className="relative bg-white dark:bg-gray-900 rounded-lg shadow-lg w-full max-w-md mx-4 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Create New Agent</h2>
+          <h2 className="text-lg font-semibold">Edit Agent</h2>
           <button
             onClick={handleClose}
             className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -53,11 +64,11 @@ export function CreateAgentModal({ isOpen, onClose, onCreateAgent }: CreateAgent
         
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label htmlFor="agentName" className="block text-sm font-medium mb-2">
+            <label htmlFor="editAgentName" className="block text-sm font-medium mb-2">
               Agent Name
             </label>
             <input
-              id="agentName"
+              id="editAgentName"
               type="text"
               value={agentName}
               onChange={(e) => setAgentName(e.target.value)}
@@ -68,11 +79,11 @@ export function CreateAgentModal({ isOpen, onClose, onCreateAgent }: CreateAgent
           </div>
 
           <div className="mb-4">
-            <label htmlFor="systemPrompt" className="block text-sm font-medium mb-2">
+            <label htmlFor="editSystemPrompt" className="block text-sm font-medium mb-2">
               System Prompt <span className="text-gray-500 font-normal">(optional)</span>
             </label>
             <textarea
-              id="systemPrompt"
+              id="editSystemPrompt"
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
               placeholder="Enter system prompt to guide the agent's behavior..."
@@ -94,7 +105,7 @@ export function CreateAgentModal({ isOpen, onClose, onCreateAgent }: CreateAgent
               disabled={!agentName.trim()}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Create Agent
+              Update Agent
             </button>
           </div>
         </form>

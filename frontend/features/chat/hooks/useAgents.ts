@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Agent } from '../types'
-import { getAgents, createAgent, deleteAgent } from '../services/agentService'
+import { getAgents, createAgent, updateAgent, deleteAgent } from '../services/agentService'
 import logger from '../../../lib/logger'
 
 export interface UseAgentsState {
@@ -10,7 +10,8 @@ export interface UseAgentsState {
 
 export interface UseAgentsApi extends UseAgentsState {
   setActiveAgentId: (id: number | null) => void
-  createAgent: (name: string) => Promise<void>
+  createAgent: (name: string, systemPrompt?: string) => Promise<void>
+  updateAgent: (agentId: number, name: string, systemPrompt?: string) => Promise<void>
   deleteAgent: (agentId: number) => Promise<void>
 }
 
@@ -36,13 +37,24 @@ export function useAgents(): UseAgentsApi {
     }
   }, [])
 
-  const handleCreateAgent = useCallback(async (name: string) => {
+  const handleCreateAgent = useCallback(async (name: string, systemPrompt?: string) => {
     try {
-      const newAgent = await createAgent(name)
+      const newAgent = await createAgent(name, systemPrompt)
       setAgents((prev) => [...prev, newAgent])
       setActiveAgentId(newAgent.id)
     } catch (e) {
       logger.error('Failed to create agent', e)
+    }
+  }, [])
+
+  const handleUpdateAgent = useCallback(async (agentId: number, name: string, systemPrompt?: string) => {
+    try {
+      const updatedAgent = await updateAgent(agentId, name, systemPrompt)
+      setAgents((prev) => prev.map(agent => 
+        agent.id === agentId ? updatedAgent : agent
+      ))
+    } catch (e) {
+      logger.error('Failed to update agent', e)
     }
   }, [])
 
@@ -73,6 +85,7 @@ export function useAgents(): UseAgentsApi {
     activeAgentId,
     setActiveAgentId,
     createAgent: handleCreateAgent,
+    updateAgent: handleUpdateAgent,
     deleteAgent: handleDeleteAgent,
   }
 }
