@@ -10,8 +10,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Backend (Python)
 - **FastAPI** - High-performance API server (`backend/app.py`)
+- **SQLite** - Database with LangChain message storage (`backend/db.py`)
 - **LangGraph** - Agent orchestration and workflow management (`agents/graph.py`)
-- **LangChain Community** - LLM integrations (currently ChatOllama with gpt-oss model)
+- **LangChain Community** - LLM integrations (langchain-ollama)
 - **Pydantic** - Data validation and serialization
 - **SSE-Starlette** - Server-sent events for real-time streaming
 
@@ -20,11 +21,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **React 19.1.0** - Latest React with modern features
 - **TypeScript 5** - Type safety
 - **Tailwind CSS 4** - Styling system
+- **React Markdown** - Markdown rendering with GFM support
+- **Jest** - Frontend testing framework
 - **ESLint** - Code linting
 
 ### Development Tools
-- **Ruff** - Python linting and formatting
-- **pytest** - Python testing framework
+- **Ruff** - Python linting and formatting (Python 3.11+ target)
+- **pytest** - Python testing framework with async support
 - **Make** - Build automation
 
 ## Repository Structure
@@ -32,24 +35,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 /
 ├── frontend/         # Next.js frontend application
-│   ├── app/
+│   ├── app/          # Next.js App Router pages
 │   │   ├── page.tsx  # Main chat interface
 │   │   ├── layout.tsx
-│   │   ├── globals.css
-│   │   └── __tests__ # Frontend tests
+│   │   └── globals.css
+│   ├── features/     # Feature-based organization
+│   │   └── chat/     # Chat feature components, hooks, services
+│   │       ├── components/     # React components
+│   │       ├── hooks/         # Custom React hooks
+│   │       ├── services/      # API service layer
+│   │       └── types.ts       # TypeScript type definitions
+│   ├── lib/          # Shared utilities
 │   ├── package.json
 │   └── tsconfig.json
 ├── backend/          # FastAPI backend service
-│   └── app.py        # Main API server with /chat endpoint
+│   ├── app.py        # Main API server with endpoints
+│   └── db.py         # Database operations and LangChain integration
 ├── agents/           # Agent logic and graph orchestration
 │   ├── __init__.py
-│   └── graph.py      # LangGraph implementation
-├── tests/            # Backend/integration tests
-│   ├── agents/
-│   └── backend/
+│   ├── graph.py      # LangGraph implementation
+│   └── sample.py     # Sample agent configurations
+├── memory/           # Database and persistent storage
+│   ├── db.sqlite     # SQLite database
+│   └── prompts.md    # Agent prompts and templates
+├── sql/              # Database schema and migrations
+│   └── 0001_init.sql # Initial database schema
+├── tests/            # Comprehensive test suite
+│   ├── agents/       # Agent system tests
+│   └── backend/      # Backend API tests
+├── utils/            # Shared utilities
+│   └── logger.py     # Logging configuration
 ├── docs/             # Project documentation
 ├── pyproject.toml    # Python project configuration
-├── Makefile          # Build commands
+├── Makefile          # Build and development commands
 └── CLAUDE.md         # This file
 ```
 
@@ -74,52 +92,75 @@ make format       # Format Python code with ruff
 make check        # Fix auto-fixable issues
 make test         # Run pytest test suite
 make validate     # Run format, lint, and test
+
+# Frontend testing
+cd frontend && npm test       # Run Jest tests
+cd frontend && npm run test:watch  # Watch mode
 ```
 
 ## Current Architecture
 
+### Database Design
+- **SQLite with LangChain integration** - Messages stored as LangChain message objects
+- **Agent management** - Agents with customizable system prompts (`backend/db.py:69-77`)
+- **Conversation threads** - LangGraph-compatible thread management (`backend/db.py:146-157`)
+- **Message persistence** - Full LangChain message types (Human, AI, System, Tool)
+- **Automatic indexing** - Performance optimized with conversation and message indexes
+
 ### Agent System
+- **Multi-agent support** - Create, update, and manage multiple agents with unique system prompts
 - **LangGraph-based orchestration** - Manages agent workflows and state
 - **GraphState** - TypedDict defining message flow (`message: str`, `reply: str`)
-- **llm_node** - Core LLM processing using ChatOllama with gpt-oss model
+- **llm_node** - Core LLM processing using langchain-ollama
 - **Streaming support** - Real-time token streaming via `astream_events`
 
 ### API Design
-- **POST /chat** - Main chat endpoint accepting `ChatRequest`
+- **Agent Management** - Full CRUD operations for agents with system prompts
+- **Conversation Management** - Thread-based conversation handling
+- **POST /chat** - Main chat endpoint accepting `ChatRequest` with agent and thread IDs
 - **GET /healthz** - Health check endpoint
 - **CORS enabled** - Allows frontend on localhost:3000
 - **SSE streaming** - Server-sent events for real-time responses
 - **Error handling** - Proper HTTP status codes and error messages
 
 ### Frontend Features
+- **Multi-agent UI** - Create, edit, and switch between different agents
+- **Conversation management** - Persistent conversations with thread IDs
 - **Real-time chat interface** - Streaming responses with proper message handling
+- **Component architecture** - Feature-based organization with reusable components
+- **Service layer** - Dedicated API services for agents, conversations, and chat
+- **Custom hooks** - React hooks for state management (`useAgents`, `useChat`, `useConversations`)
 - **Responsive design** - Tailwind CSS for mobile/desktop
-- **Message persistence** - Client-side state management
-- **Stop generation** - User can abort long responses
-- **Control token handling** - Filters out `[DONE]` and similar control tokens
-- **Debug logging** - Comprehensive logging system (currently disabled in frontend/app/page.tsx:8-11)
+- **Markdown rendering** - Full markdown support with GitHub Flavored Markdown
+- **Testing coverage** - Comprehensive Jest test suite for components and services
 
 ## Code Style & Conventions
 
 ### Python
-- **Ruff configuration** - Line length 88, Python 3.8+ target
-- **Import organization** - First-party imports: `agents`, `server`
-- **Type hints** - Required for all function signatures
+- **Ruff configuration** - Line length 88, Python 3.11+ target
+- **Import organization** - First-party imports: `agents`, `backend`
+- **Type hints** - Required for all function signatures with modern union syntax
 - **Async/await** - Preferred for I/O operations
 - **Error handling** - Proper exception handling with specific error types
+- **Database patterns** - Context managers for connection handling
 
 ### TypeScript/React
-- **Strict TypeScript** - Full type safety enabled
-- **Functional components** - Use hooks pattern
+- **Strict TypeScript** - Full type safety enabled with interface definitions
+- **Functional components** - Use hooks pattern with custom hooks for logic
+- **Feature-based architecture** - Organize by feature (chat) rather than file type
+- **Service layer pattern** - Separate API calls from component logic
 - **CSS-in-JS** - Tailwind classes for styling
+- **Testing** - Jest with React Testing Library for component tests
 - **ESLint** - Next.js recommended configuration
 
 ## Development Workflow
 
 ### Testing
-- **pytest** - Python test runner with async support
-- **Test structure** - Mirror source structure in `tests/`
-- **Coverage** - Tests for both agents and server components
+- **pytest** - Python test runner with async support for backend
+- **Jest** - Frontend testing with React Testing Library
+- **Test structure** - Mirror source structure in `tests/` for backend, co-located for frontend
+- **Coverage** - Tests for agents, backend APIs, database operations, and frontend components
+- **Database testing** - Isolated test database for each test run
 
 ### Git Workflow
 - **Main branch** - Primary development branch
@@ -129,14 +170,23 @@ make validate     # Run format, lint, and test
 ## Key Integration Points
 
 ### LLM Integration
-- **Ollama backend** - Local LLM serving (gpt-oss model)
+- **Ollama backend** - Local LLM serving via langchain-ollama
 - **Connection handling** - Graceful fallback when LLM service unavailable
 - **Streaming tokens** - Real-time response generation
+- **Multi-agent prompting** - Custom system prompts per agent
 
 ### Frontend-Backend Communication
-- **SSE protocol** - Server-sent events for streaming
+- **SSE protocol** - Server-sent events for streaming chat responses
 - **JSON API** - RESTful endpoints with Pydantic validation
+- **Agent management** - CRUD operations for agents and conversations
+- **Thread-based conversations** - Persistent conversation state
 - **Error propagation** - Proper error handling from backend to frontend
+
+### Data Flow
+- **Request flow** - Frontend → API → LangGraph → Ollama → Database
+- **Message persistence** - All messages stored as LangChain objects in SQLite
+- **State management** - React hooks manage UI state, backend manages conversation state
+- **Real-time updates** - SSE streams for immediate response feedback
 
 ## 🚨 CRITICAL DEVELOPMENT GUIDELINES 🚨
 
