@@ -17,6 +17,7 @@ from backend.db import (
     create_conversation,
     delete_agent,
     delete_conversation,
+    get_agent,
     get_conversation_by_thread,
     get_conversation_messages,
     get_messages_by_thread,
@@ -26,6 +27,7 @@ from backend.db import (
     list_agents,
     list_conversations,
     save_message,
+    update_agent,
 )
 from utils.logger import get_logger
 
@@ -57,6 +59,7 @@ class ChatRequest(BaseModel):
 class Agent(BaseModel):
     id: int
     name: str
+    system_prompt: str | None = None
 
 
 class AgentsResponse(BaseModel):
@@ -77,6 +80,7 @@ class MessagesResponse(BaseModel):
 
 class CreateAgentRequest(BaseModel):
     name: str
+    system_prompt: str | None = None
 
 
 class CreateAgentResponse(BaseModel):
@@ -102,6 +106,11 @@ class CreateConversationRequest(BaseModel):
 
 class CreateConversationResponse(BaseModel):
     conversation: Conversation
+
+
+class UpdateAgentRequest(BaseModel):
+    name: str | None = None
+    system_prompt: str | None = None
 
 
 @asynccontextmanager
@@ -144,7 +153,12 @@ async def get_agents():
     logger.debug("Agents list requested")
     try:
         agents_data = list_agents()
-        agents = [Agent(id=agent["id"], name=agent["name"]) for agent in agents_data]
+        agents = [
+            Agent(
+                id=agent["id"], name=agent["name"], system_prompt=agent["system_prompt"]
+            )
+            for agent in agents_data
+        ]
         logger.info(f"Returning {len(agents)} agents")
         return AgentsResponse(agents=agents)
     except Exception as e:
@@ -152,17 +166,80 @@ async def get_agents():
         raise HTTPException(status_code=500, detail="Failed to fetch agents")
 
 
+@app.get("/agents/{agent_id}", response_model=Agent)
+async def get_agent_by_id(agent_id: int):
+    logger.debug(f"Agent requested for id: {agent_id}")
+
+    agent_data = get_agent(agent_id)
+    if not agent_data:
+        logger.warning(f"Agent {agent_id} not found")
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        agent = Agent(
+            id=agent_data["id"],
+            name=agent_data["name"],
+            system_prompt=agent_data["system_prompt"],
+        )
+        logger.info(f"Returning agent {agent.id}")
+        return agent
+    except Exception as e:
+        logger.error(f"Error fetching agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch agent")
+
+
 @app.post("/agents", response_model=CreateAgentResponse, status_code=201)
 async def create_new_agent(request: CreateAgentRequest):
     logger.debug(f"Agent creation requested with name: {request.name}")
     try:
-        agent_data = create_agent(request.name)
-        agent = Agent(id=agent_data["id"], name=agent_data["name"])
+        agent_data = create_agent(request.name, request.system_prompt)
+        agent = Agent(
+            id=agent_data["id"],
+            name=agent_data["name"],
+            system_prompt=agent_data["system_prompt"],
+        )
         logger.info(f"Created new agent with id {agent.id} and name '{agent.name}'")
         return CreateAgentResponse(agent=agent)
     except Exception as e:
         logger.error(f"Error creating agent: {e}")
         raise HTTPException(status_code=500, detail="Failed to create agent")
+
+
+@app.put("/agents/{agent_id}", response_model=Agent)
+async def update_existing_agent(agent_id: int, request: UpdateAgentRequest):
+    logger.debug(f"Agent update requested for id: {agent_id}")
+
+    # Check if agent exists first
+    if not agent_exists(agent_id):
+        logger.warning(f"Agent {agent_id} not found")
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        # Handle the case where fields are not provided vs explicitly set to None
+        kwargs = {}
+        if request.name is not None:
+            kwargs["name"] = request.name
+        if (
+            hasattr(request, "system_prompt")
+            and "system_prompt" in request.model_fields_set
+        ):
+            kwargs["system_prompt"] = request.system_prompt
+
+        agent_data = update_agent(agent_id, **kwargs)
+        if not agent_data:
+            logger.warning(f"Agent {agent_id} could not be updated")
+            raise HTTPException(status_code=500, detail="Failed to update agent")
+
+        agent = Agent(
+            id=agent_data["id"],
+            name=agent_data["name"],
+            system_prompt=agent_data["system_prompt"],
+        )
+        logger.info(f"Updated agent {agent.id}")
+        return agent
+    except Exception as e:
+        logger.error(f"Error updating agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update agent")
 
 
 @app.delete("/agents/{agent_id}", status_code=204)
@@ -374,7 +451,9 @@ async def chat(request: ChatRequest, background_tasks: BackgroundTasks):
 
     try:
         # Stream with conversation history
-        original_streamer = stream_graph_events(request.message, historical_messages)
+        original_streamer = stream_graph_events(
+            request.message, request.agent_id, historical_messages
+        )
         persistence_queue = asyncio.Queue()
         background_tasks.add_task(
             persist_from_queue, conversation_id, persistence_queue

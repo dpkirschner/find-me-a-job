@@ -50,6 +50,15 @@ class TestAgentFunctions:
         assert agent_data["name"] == "test_agent"
         assert "id" in agent_data
         assert agent_data["id"] is not None
+        assert agent_data["system_prompt"] is None
+
+    def test_create_agent_with_system_prompt(self, db_connection: sqlite3.Connection):
+        system_prompt = "You are a helpful assistant."
+        agent_data = db.create_agent("test_agent", system_prompt)
+        assert agent_data["name"] == "test_agent"
+        assert agent_data["system_prompt"] == system_prompt
+        assert "id" in agent_data
+        assert agent_data["id"] is not None
 
     def test_agent_exists(self, db_connection: sqlite3.Connection):
         # Test non-existent agent
@@ -133,6 +142,106 @@ class TestAgentFunctions:
         assert len(db.list_messages(agent1_id)) == 0
         assert len(db.list_messages(agent2_id)) == 1
         assert len(db.list_agents()) == 1
+
+    def test_get_agent(self, db_connection: sqlite3.Connection):
+        # Test non-existent agent
+        assert db.get_agent(999) is None
+
+        # Create and test existing agent
+        agent_data = db.create_agent("test_agent", "You are helpful.")
+        agent_id = agent_data["id"]
+
+        retrieved_agent = db.get_agent(agent_id)
+        assert retrieved_agent is not None
+        assert retrieved_agent["id"] == agent_id
+        assert retrieved_agent["name"] == "test_agent"
+        assert retrieved_agent["system_prompt"] == "You are helpful."
+        assert "created_at" in retrieved_agent
+
+    def test_update_agent_name_only(self, db_connection: sqlite3.Connection):
+        # Create agent
+        agent_data = db.create_agent("original_name", "Original prompt")
+        agent_id = agent_data["id"]
+
+        # Update name only
+        updated_agent = db.update_agent(agent_id, name="new_name")
+        assert updated_agent is not None
+        assert updated_agent["name"] == "new_name"
+        assert updated_agent["system_prompt"] == "Original prompt"
+
+    def test_update_agent_system_prompt_only(self, db_connection: sqlite3.Connection):
+        # Create agent
+        agent_data = db.create_agent("test_agent", "Original prompt")
+        agent_id = agent_data["id"]
+
+        # Update system prompt only
+        new_prompt = "You are a specialized assistant."
+        updated_agent = db.update_agent(agent_id, system_prompt=new_prompt)
+        assert updated_agent is not None
+        assert updated_agent["name"] == "test_agent"
+        assert updated_agent["system_prompt"] == new_prompt
+
+    def test_update_agent_both_fields(self, db_connection: sqlite3.Connection):
+        # Create agent
+        agent_data = db.create_agent("original_name", "Original prompt")
+        agent_id = agent_data["id"]
+
+        # Update both name and system prompt
+        new_prompt = "You are a specialized assistant."
+        updated_agent = db.update_agent(
+            agent_id, name="new_name", system_prompt=new_prompt
+        )
+        assert updated_agent is not None
+        assert updated_agent["name"] == "new_name"
+        assert updated_agent["system_prompt"] == new_prompt
+
+    def test_update_agent_no_changes(self, db_connection: sqlite3.Connection):
+        # Create agent
+        agent_data = db.create_agent("test_agent", "Original prompt")
+        agent_id = agent_data["id"]
+
+        # Update with no changes
+        updated_agent = db.update_agent(agent_id)
+        assert updated_agent is not None
+        assert updated_agent["name"] == "test_agent"
+        assert updated_agent["system_prompt"] == "Original prompt"
+
+    def test_update_agent_nonexistent(self, db_connection: sqlite3.Connection):
+        # Try to update non-existent agent
+        result = db.update_agent(999, name="new_name")
+        assert result is None
+
+    def test_update_agent_clear_system_prompt(self, db_connection: sqlite3.Connection):
+        # Create agent with system prompt
+        agent_data = db.create_agent("test_agent", "Original prompt")
+        agent_id = agent_data["id"]
+
+        # Clear system prompt by setting it to None
+        updated_agent = db.update_agent(agent_id, system_prompt=None)
+        assert updated_agent is not None
+        assert updated_agent["name"] == "test_agent"
+        assert updated_agent["system_prompt"] is None
+
+    def test_list_agents_includes_system_prompt(
+        self, db_connection: sqlite3.Connection
+    ):
+        # Create agents with and without system prompts
+        db.create_agent("agent1", "Prompt for agent 1")
+        db.create_agent("agent2", None)
+        db.create_agent("agent3", "Prompt for agent 3")
+
+        agents = db.list_agents()
+        assert len(agents) == 3
+
+        # Check that system_prompt field is included
+        for agent in agents:
+            assert "system_prompt" in agent
+
+        # Check specific prompts
+        agent_prompts = {agent["name"]: agent["system_prompt"] for agent in agents}
+        assert agent_prompts["agent1"] == "Prompt for agent 1"
+        assert agent_prompts["agent2"] is None
+        assert agent_prompts["agent3"] == "Prompt for agent 3"
 
 
 class TestMessageFunctions:

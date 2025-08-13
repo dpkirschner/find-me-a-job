@@ -52,7 +52,7 @@ class TestHealthEndpoint:
 class TestChatEndpoint:
     """Tests for the /chat endpoint."""
 
-    @patch("agents.graph.stream_graph_events")
+    @patch("backend.app.stream_graph_events")
     def test_chat_endpoint_success(self, mock_stream_events, client):
         """Test successful chat endpoint call."""
         # First create an agent to chat with
@@ -70,9 +70,41 @@ class TestChatEndpoint:
         # Now test the chat endpoint
         response = client.post("/chat", json={"message": "Hello", "agent_id": agent_id})
 
+        # Verify stream_graph_events was called with correct arguments
+        mock_stream_events.assert_called_once()
+        call_args = mock_stream_events.call_args
+        assert call_args[0][0] == "Hello"  # user_message
+        assert call_args[0][1] == agent_id  # agent_id
+        assert call_args[0][2] == []  # historical_messages (empty for new conversation)
+
         # Assertions
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+
+    @patch("backend.app.stream_graph_events")
+    def test_chat_endpoint_with_system_prompt_agent(self, mock_stream_events, client):
+        """Test chat endpoint with agent that has system prompt."""
+        # Create an agent with system prompt
+        system_prompt = "You are a helpful assistant."
+        agent = db.create_agent("test_agent", system_prompt)
+        agent_id = agent["id"]
+
+        # Mock the stream events to avoid LLM calls
+        async def mock_events():
+            yield {"event": "message", "data": "I'm here to help!"}
+            yield {"event": "done", "data": "[DONE]"}
+
+        mock_stream_events.return_value = mock_events()
+
+        # Test the chat endpoint
+        response = client.post("/chat", json={"message": "Hello", "agent_id": agent_id})
+
+        # Verify stream_graph_events was called with the agent_id
+        mock_stream_events.assert_called_once()
+        call_args = mock_stream_events.call_args
+        assert call_args[0][1] == agent_id  # agent_id should be passed
+
+        assert response.status_code == 200
 
     def test_chat_endpoint_invalid_request_body(self, client):
         """Test chat endpoint with invalid JSON body."""
@@ -146,6 +178,139 @@ class TestAgentsEndpoint:
         assert response.status_code == 201
         data = response.json()
         assert data["agent"]["name"] == "test_agent"
+        assert data["agent"]["system_prompt"] is None
+
+    def test_create_agent_with_system_prompt(self, client):
+        """Test successful POST /agents endpoint call with system prompt."""
+        system_prompt = "You are a helpful assistant."
+        response = client.post(
+            "/agents", json={"name": "test_agent", "system_prompt": system_prompt}
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["agent"]["name"] == "test_agent"
+        assert data["agent"]["system_prompt"] == system_prompt
+
+    def test_get_agent_success(self, client):
+        """Test successful GET /agents/{agent_id} endpoint call."""
+        # First create an agent
+        agent = db.create_agent("test_agent", "You are helpful.")
+        agent_id = agent["id"]
+
+        # Get the agent
+        response = client.get(f"/agents/{agent_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == agent_id
+        assert data["name"] == "test_agent"
+        assert data["system_prompt"] == "You are helpful."
+
+    def test_get_agent_not_found(self, client):
+        """Test GET /agents/{agent_id} with non-existent agent."""
+        response = client.get("/agents/999")
+        assert response.status_code == 404
+        assert "Agent not found" in response.json()["detail"]
+
+    def test_get_agent_invalid_id(self, client):
+        """Test GET /agents/{agent_id} with invalid agent ID."""
+        response = client.get("/agents/invalid")
+        assert response.status_code == 422
+
+    def test_update_agent_success(self, client):
+        """Test successful PUT /agents/{agent_id} endpoint call."""
+        # First create an agent
+        agent = db.create_agent("original_name", "Original prompt")
+        agent_id = agent["id"]
+
+        # Update the agent
+        response = client.put(
+            f"/agents/{agent_id}",
+            json={"name": "updated_name", "system_prompt": "Updated prompt"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == agent_id
+        assert data["name"] == "updated_name"
+        assert data["system_prompt"] == "Updated prompt"
+
+    def test_update_agent_name_only(self, client):
+        """Test PUT /agents/{agent_id} updating name only."""
+        # First create an agent
+        agent = db.create_agent("original_name", "Original prompt")
+        agent_id = agent["id"]
+
+        # Update name only
+        response = client.put(f"/agents/{agent_id}", json={"name": "updated_name"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "updated_name"
+        assert data["system_prompt"] == "Original prompt"
+
+    def test_update_agent_system_prompt_only(self, client):
+        """Test PUT /agents/{agent_id} updating system prompt only."""
+        # First create an agent
+        agent = db.create_agent("test_agent", "Original prompt")
+        agent_id = agent["id"]
+
+        # Update system prompt only
+        response = client.put(
+            f"/agents/{agent_id}", json={"system_prompt": "Updated prompt"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "test_agent"
+        assert data["system_prompt"] == "Updated prompt"
+
+    def test_update_agent_clear_system_prompt(self, client):
+        """Test PUT /agents/{agent_id} clearing system prompt."""
+        # First create an agent
+        agent = db.create_agent("test_agent", "Original prompt")
+        agent_id = agent["id"]
+
+        # Clear system prompt
+        response = client.put(f"/agents/{agent_id}", json={"system_prompt": None})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "test_agent"
+        assert data["system_prompt"] is None
+
+    def test_update_agent_not_found(self, client):
+        """Test PUT /agents/{agent_id} with non-existent agent."""
+        response = client.put("/agents/999", json={"name": "new_name"})
+        assert response.status_code == 404
+        assert "Agent not found" in response.json()["detail"]
+
+    def test_update_agent_no_changes(self, client):
+        """Test PUT /agents/{agent_id} with empty request body."""
+        # First create an agent
+        agent = db.create_agent("test_agent", "Original prompt")
+        agent_id = agent["id"]
+
+        # Update with no changes
+        response = client.put(f"/agents/{agent_id}", json={})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "test_agent"
+        assert data["system_prompt"] == "Original prompt"
+
+    def test_update_agent_invalid_id(self, client):
+        """Test PUT /agents/{agent_id} with invalid agent ID."""
+        response = client.put("/agents/invalid", json={"name": "new_name"})
+        assert response.status_code == 422
+
+    def test_get_agents_includes_system_prompt(self, client):
+        """Test that GET /agents includes system_prompt field."""
+        # Create agents with and without system prompts
+        db.create_agent("agent1", "Prompt for agent 1")
+        db.create_agent("agent2", None)
+
+        response = client.get("/agents")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Check that system_prompt field is included for all agents
+        for agent in data["agents"]:
+            assert "system_prompt" in agent
 
     def test_create_agent_invalid_request_body(self, client):
         """Test POST /agents endpoint with invalid JSON body."""

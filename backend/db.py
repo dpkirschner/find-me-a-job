@@ -55,7 +55,7 @@ def initialize_database():
 def list_agents() -> list[dict[str, Any]]:
     """Lists all agents."""
     with get_connection() as conn:
-        cursor = conn.execute("SELECT id, name FROM agents ORDER BY id")
+        cursor = conn.execute("SELECT id, name, system_prompt FROM agents ORDER BY id")
         return [dict(row) for row in cursor.fetchall()]
 
 
@@ -66,15 +66,59 @@ def agent_exists(agent_id: int) -> bool:
         return cursor.fetchone() is not None
 
 
-def create_agent(name: str) -> dict[str, Any]:
+def create_agent(name: str, system_prompt: str | None = None) -> dict[str, Any]:
     """Creates a new agent and returns the created agent data."""
     with get_connection() as conn:
         cursor = conn.execute(
-            "INSERT INTO agents (name) VALUES (?) RETURNING id, name, created_at",
-            (name,),
+            "INSERT INTO agents (name, system_prompt) VALUES (?, ?) RETURNING id, name, system_prompt, created_at",
+            (name, system_prompt),
         )
         row = cursor.fetchone()
         return dict(row)
+
+
+def get_agent(agent_id: int) -> dict[str, Any] | None:
+    """Get a specific agent by ID."""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT id, name, system_prompt, created_at FROM agents WHERE id = ?",
+            (agent_id,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def update_agent(
+    agent_id: int, name: str | None = None, system_prompt: str | None = ...
+) -> dict[str, Any] | None:
+    """Updates an agent's name and/or system prompt."""
+    # Use ellipsis (...) as sentinel to distinguish between "not provided" and "explicitly None"
+    if name is None and system_prompt is ...:
+        return get_agent(agent_id)
+
+    with get_connection() as conn:
+        # Build dynamic query based on provided parameters
+        updates = []
+        params = []
+
+        if name is not None:
+            updates.append("name = ?")
+            params.append(name)
+
+        if (
+            system_prompt is not ...
+        ):  # system_prompt was explicitly provided (could be None or a string)
+            updates.append("system_prompt = ?")
+            params.append(system_prompt)
+
+        params.append(agent_id)
+
+        cursor = conn.execute(
+            f"UPDATE agents SET {', '.join(updates)} WHERE id = ? RETURNING id, name, system_prompt, created_at",
+            params,
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
 
 
 def delete_agent(agent_id: int) -> bool:
