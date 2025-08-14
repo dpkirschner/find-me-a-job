@@ -9,7 +9,14 @@ version = "0.1.0"
 description = "Shared core functionality for find-me-a-job"
 requires-python = ">=3.11"
 dependencies = [
-    # Add dependencies as needed
+    "langchain",
+    "langgraph", 
+    "langchain-core",
+    "langchain-ollama",
+    "crawl4ai",
+    "requests",
+    "typing-extensions",
+    "chromadb",
 ]
 
 [tool.setuptools.packages.find]

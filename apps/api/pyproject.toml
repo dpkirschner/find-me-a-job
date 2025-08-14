@@ -1,0 +1,52 @@
+# API application for find-me-a-job
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "find-me-a-job-api"
+version = "0.1.0"
+description = "FastAPI backend for find-me-a-job"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "sse-starlette",
+    "langchain-core",
+    "chromadb",
+    # Local editable dependency on core package
+    "find-me-a-job-core @ file://../../packages/core",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["*"]
+exclude = ["tests*"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "RUF"]
+fixable = ["ALL"]
+unfixable = ["B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["find_me_a_job"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
