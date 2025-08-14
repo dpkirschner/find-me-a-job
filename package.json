@@ -4,16 +4,17 @@
   "description": "An AI-powered job search orchestrator using collaborative multi-agent systems",
   "private": true,
   "workspaces": [
-    "frontend"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "dev": "concurrently \"make dev-backend\" \"make dev-frontend\"",
     "dev:frontend": "make dev-frontend",
     "dev:backend": "make dev-backend",
-    "build": "npm run build --workspace=frontend",
-    "test": "npm run test --workspace=frontend",
+    "build": "npm run build --workspace=apps/web",
+    "test": "npm run test --workspace=apps/web",
     "test:backend": "make test",
-    "lint": "npm run lint --workspace=frontend && make lint",
+    "lint": "npm run lint --workspace=apps/web && make lint",
     "format": "make format",
     "validate": "make validate"
   },
