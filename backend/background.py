@@ -2,8 +2,6 @@ import json
 import uuid
 from datetime import datetime
 
-from agents.tools import crawl4ai_scrape
-from backend.chroma_client import get_agent_collection
 from backend.db import get_connection
 
 
@@ -97,75 +95,27 @@ def get_agent_research_notes(agent_id: int, limit: int = 20) -> list[dict]:
 
 async def run_scrape_job(job_id: str, agent_id: int, url: str):
     """
-    Execute a web scraping job using Crawl4AI.
+    Execute a web scraping job using the unified research service.
     This function is designed to be called by FastAPI BackgroundTasks.
     """
     try:
         # Update job status to running
         update_job_status(job_id, "running")
 
-        # Use Crawl4AI to scrape the URL
-        scrape_result = await crawl4ai_scrape(url)
+        # Import here to avoid circular import
+        from agents.research_service import BackgroundJobFormatter, ResearchService
 
-        if scrape_result["success"]:
-            # Store content in ChromaDB
-            collection = get_agent_collection(agent_id)
-            vector_id = str(uuid.uuid4())
+        # Use unified research service
+        result = await ResearchService.research_url(agent_id, url)
 
-            try:
-                collection.add(
-                    ids=[vector_id],
-                    documents=[scrape_result["text"]],
-                    metadatas=[
-                        {
-                            "agent_id": agent_id,
-                            "url": url,
-                            "title": scrape_result["title"],
-                            "word_count": scrape_result["word_count"],
-                        }
-                    ],
-                )
-
-                # Store in database
-                store_research_note(
-                    agent_id=agent_id,
-                    vector_id=vector_id,
-                    source_url=url,
-                    content=scrape_result["text"],
-                )
-
-                # Update job status to success
-                update_job_status(
-                    job_id,
-                    "success",
-                    {
-                        "title": scrape_result["title"],
-                        "word_count": scrape_result["word_count"],
-                        "vector_id": vector_id,
-                        "content_preview": scrape_result["text"][:200] + "..."
-                        if len(scrape_result["text"]) > 200
-                        else scrape_result["text"],
-                    },
-                )
-
-            except Exception as e:
-                # ChromaDB or database error
-                update_job_status(
-                    job_id,
-                    "failure",
-                    {
-                        "error": f"Storage error: {e!s}",
-                        "scrape_success": True,
-                        "title": scrape_result.get("title", "Unknown"),
-                    },
-                )
+        if result["success"]:
+            # Update job status to success
+            formatted_result = BackgroundJobFormatter.format_research_result(result)
+            update_job_status(job_id, "success", formatted_result)
         else:
-            # Scraping failed
-            update_job_status(
-                job_id,
-                "failure",
-                {"error": scrape_result["error"], "scrape_success": False},
-            )
+            # Research failed
+            formatted_result = BackgroundJobFormatter.format_research_result(result)
+            update_job_status(job_id, "failure", formatted_result)
 
     except Exception as e:
         # Unexpected error

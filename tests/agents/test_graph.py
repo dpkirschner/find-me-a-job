@@ -1,6 +1,6 @@
 # tests/test_graph.py
 
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 import requests
@@ -12,6 +12,7 @@ class TestLLMNode:
     """Unit tests for the llm_node function."""
 
     @pytest.mark.asyncio
+    @patch("agents.graph.AGENT_TOOLS", [])  # No tools for simpler testing
     @patch("agents.graph.ChatOllama")
     async def test_llm_node_returns_reply(self, mock_chat_ollama):
         from unittest.mock import AsyncMock
@@ -37,6 +38,7 @@ class TestLLMNode:
         mock_llm_instance.ainvoke.assert_called_once()
 
     @pytest.mark.asyncio
+    @patch("agents.graph.AGENT_TOOLS", [])  # No tools for simpler testing
     @patch("agents.graph.ChatOllama")
     @patch("backend.db.get_agent")
     async def test_llm_node_with_system_prompt(self, mock_get_agent, mock_chat_ollama):
@@ -74,6 +76,7 @@ class TestLLMNode:
         assert result["messages"][0].content == "I'm here to help!"
 
     @pytest.mark.asyncio
+    @patch("agents.graph.AGENT_TOOLS", [])  # No tools for simpler testing
     @patch("agents.graph.ChatOllama")
     @patch("backend.db.get_agent")
     async def test_llm_node_with_existing_system_message(
@@ -119,6 +122,7 @@ class TestLLMNode:
         assert call_args[1].content == "Hello"
 
     @pytest.mark.asyncio
+    @patch("agents.graph.AGENT_TOOLS", [])  # No tools for simpler testing
     @patch("agents.graph.ChatOllama")
     @patch("backend.db.get_agent")
     async def test_llm_node_agent_not_found(self, mock_get_agent, mock_chat_ollama):
@@ -132,6 +136,7 @@ class TestLLMNode:
         mock_llm_instance = AsyncMock()
         mock_response = AIMessage(content="Response")
         mock_llm_instance.ainvoke.return_value = mock_response
+
         mock_chat_ollama.return_value = mock_llm_instance
 
         # Create GraphState with non-existent agent_id
@@ -148,6 +153,7 @@ class TestLLMNode:
         assert call_args[0].content == "Hello"
 
     @pytest.mark.asyncio
+    @patch("agents.graph.AGENT_TOOLS", [])  # No tools for simpler testing
     @patch("agents.graph.ChatOllama")
     @patch("backend.db.get_agent")
     async def test_llm_node_agent_no_system_prompt(
@@ -167,6 +173,7 @@ class TestLLMNode:
         mock_llm_instance = AsyncMock()
         mock_response = AIMessage(content="Response")
         mock_llm_instance.ainvoke.return_value = mock_response
+
         mock_chat_ollama.return_value = mock_llm_instance
 
         # Create GraphState with agent that has no system prompt
@@ -183,6 +190,95 @@ class TestLLMNode:
         assert call_args[0].content == "Hello"
 
 
+class TestToolNode:
+    """Test the tool execution node."""
+
+    @pytest.mark.asyncio
+    @patch("agents.graph.AGENT_TOOLS")
+    async def test_tool_node_with_tool_calls(self, mock_agent_tools):
+        from langchain_core.messages import AIMessage, ToolMessage
+
+        from agents.graph import tool_node
+
+        # Mock tool with ainvoke method
+        mock_tool = Mock()
+        mock_tool.name = "test_tool"
+        mock_tool.ainvoke = AsyncMock(return_value="Tool result")
+        # Ensure acall doesn't exist so it uses ainvoke
+        del mock_tool.acall
+        mock_agent_tools.__iter__.return_value = [mock_tool]
+
+        # Create AI message with tool calls
+        ai_message = AIMessage(
+            content="I'll help you with that.",
+            tool_calls=[
+                {"id": "call_123", "name": "test_tool", "args": {"param": "value"}}
+            ],
+        )
+
+        test_state = {"messages": [ai_message], "agent_id": 1}
+
+        result = await tool_node(test_state)
+
+        assert "messages" in result
+        assert len(result["messages"]) == 1
+        assert isinstance(result["messages"][0], ToolMessage)
+        assert result["messages"][0].content == "Tool result"
+        assert result["messages"][0].tool_call_id == "call_123"
+
+        # Verify tool was called with injected agent_id
+        mock_tool.ainvoke.assert_called_once_with({"param": "value", "agent_id": 1})
+
+    @pytest.mark.asyncio
+    async def test_tool_node_no_tool_calls(self):
+        from langchain_core.messages import AIMessage
+
+        from agents.graph import tool_node
+
+        # Create AI message without tool calls
+        ai_message = AIMessage(content="Just a regular response.")
+
+        test_state = {"messages": [ai_message], "agent_id": 1}
+
+        result = await tool_node(test_state)
+
+        assert "messages" in result
+        assert len(result["messages"]) == 0  # No tool calls to process
+
+
+class TestShouldContinue:
+    """Test the conditional edge logic."""
+
+    def test_should_continue_with_tool_calls(self):
+        from langchain_core.messages import AIMessage
+
+        from agents.graph import should_continue
+
+        # Create AI message with tool calls
+        ai_message = AIMessage(
+            content="I'll use a tool.",
+            tool_calls=[{"id": "call_123", "name": "test_tool", "args": {}}],
+        )
+
+        test_state = {"messages": [ai_message]}
+        result = should_continue(test_state)
+
+        assert result == "tools"
+
+    def test_should_continue_without_tool_calls(self):
+        from langchain_core.messages import AIMessage
+
+        from agents.graph import should_continue
+
+        # Create AI message without tool calls
+        ai_message = AIMessage(content="Just a regular response.")
+
+        test_state = {"messages": [ai_message]}
+        result = should_continue(test_state)
+
+        assert result == "end"
+
+
 class TestGraphStructure:
     """Tests for graph compilation and structure."""
 
@@ -190,13 +286,15 @@ class TestGraphStructure:
         node_names = list(graph.get_graph().nodes.keys())
         assert "__start__" in node_names
         assert "llm_node" in node_names
+        assert "tool_node" in node_names
         assert "__end__" in node_names
 
     def test_graph_has_correct_edges(self):
         edges = graph.get_graph().edges
         edge_pairs = [(edge.source, edge.target) for edge in edges]
         assert ("__start__", "llm_node") in edge_pairs
-        assert ("llm_node", "__end__") in edge_pairs
+        # Note: llm_node now has conditional edges to either tools or end
+        assert ("tool_node", "llm_node") in edge_pairs
 
 
 class TestStreamGraphEvents:
