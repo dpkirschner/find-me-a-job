@@ -46,7 +46,9 @@ async def llm_node(state: GraphState) -> dict:
                     f"Added system prompt for agent {agent_id}: {system_prompt[:50]}..."
                 )
 
-        llm = ChatOllama(model="gpt-oss")
+        llm = ChatOllama(
+            model="gpt-oss"
+        )  # DAN-TEST extract this to a config file (huihui20b-ablit)
         logger.debug("ChatOllama instance created, invoking LLM")
         response = await llm.ainvoke(messages)
         logger.debug(f"LLM response received, content length: {len(response.content)}")

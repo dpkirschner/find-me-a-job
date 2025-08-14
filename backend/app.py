@@ -10,6 +10,12 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from agents.graph import stream_graph_events
+from backend.background import (
+    create_background_job,
+    get_agent_research_notes,
+    get_job_status,
+    run_scrape_job,
+)
 from backend.db import (
     agent_exists,
     create_agent,
@@ -111,6 +117,38 @@ class CreateConversationResponse(BaseModel):
 class UpdateAgentRequest(BaseModel):
     name: str | None = None
     system_prompt: str | None = None
+
+
+class ExecuteToolRequest(BaseModel):
+    tool: str
+    url: str
+
+
+class JobResponse(BaseModel):
+    job_id: str
+
+
+class JobStatusResponse(BaseModel):
+    job_id: str
+    agent_id: int
+    task_name: str
+    status: str
+    payload: dict
+    result: dict
+    created_at: str
+    completed_at: str | None = None
+
+
+class ResearchNote(BaseModel):
+    id: int
+    vector_id: str
+    source_url: str
+    content: str
+    created_at: str
+
+
+class ResearchNotesResponse(BaseModel):
+    notes: list[ResearchNote]
 
 
 @asynccontextmanager
@@ -409,6 +447,95 @@ async def persist_from_queue(conversation_id: int, queue: asyncio.Queue):
         logger.warning(
             f"BACKGROUND: No assistant response to save for conversation {conversation_id}"
         )
+
+
+@app.post(
+    "/agents/{agent_id}/execute-tool", response_model=JobResponse, status_code=202
+)
+async def execute_agent_tool(
+    agent_id: int, request: ExecuteToolRequest, background_tasks: BackgroundTasks
+):
+    """Execute a tool for an agent in the background."""
+    logger.debug(f"Tool execution requested for agent {agent_id}: {request.tool}")
+
+    # Check if agent exists
+    if not agent_exists(agent_id):
+        logger.warning(f"Agent {agent_id} not found")
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Validate tool and URL
+    if request.tool != "crawl4ai_scrape":
+        logger.warning(f"Unknown tool: {request.tool}")
+        raise HTTPException(status_code=400, detail="Unknown tool")
+
+    if not request.url.startswith(("http://", "https://")):
+        logger.warning(f"Invalid URL: {request.url}")
+        raise HTTPException(status_code=400, detail="Invalid URL format")
+
+    try:
+        # Create background job
+        job_id = create_background_job(
+            agent_id=agent_id, task_name=request.tool, payload={"url": request.url}
+        )
+
+        # Schedule the background task
+        background_tasks.add_task(run_scrape_job, job_id, agent_id, request.url)
+
+        logger.info(f"Scheduled {request.tool} job {job_id} for agent {agent_id}")
+        return JobResponse(job_id=job_id)
+
+    except Exception as e:
+        logger.error(f"Error creating background job: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create background job")
+
+
+@app.get("/jobs/{job_id}", response_model=JobStatusResponse)
+async def get_job_status_endpoint(job_id: str):
+    """Get the status of a background job."""
+    logger.debug(f"Job status requested for: {job_id}")
+
+    try:
+        job_data = get_job_status(job_id)
+        if not job_data:
+            logger.warning(f"Job {job_id} not found")
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        return JobStatusResponse(**job_data)
+
+    except Exception as e:
+        logger.error(f"Error fetching job status for {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch job status")
+
+
+@app.get("/agents/{agent_id}/research", response_model=ResearchNotesResponse)
+async def get_agent_research(agent_id: int, limit: int = 20):
+    """Get research notes for an agent."""
+    logger.debug(f"Research notes requested for agent {agent_id}")
+
+    # Check if agent exists
+    if not agent_exists(agent_id):
+        logger.warning(f"Agent {agent_id} not found")
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        notes_data = get_agent_research_notes(agent_id, limit)
+        notes = [
+            ResearchNote(
+                id=note["id"],
+                vector_id=note["vector_id"],
+                source_url=note["source_url"],
+                content=note["content"],
+                created_at=note["created_at"],
+            )
+            for note in notes_data
+        ]
+
+        logger.info(f"Returning {len(notes)} research notes for agent {agent_id}")
+        return ResearchNotesResponse(notes=notes)
+
+    except Exception as e:
+        logger.error(f"Error fetching research notes for agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch research notes")
 
 
 @app.post("/chat")

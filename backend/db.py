@@ -15,6 +15,7 @@ from langchain_core.messages import (
 # Centralize configuration
 DB_PATH = Path("memory/db.sqlite")
 INIT_SQL_PATH = Path("sql/0001_init.sql")
+RESEARCH_JOBS_SQL_PATH = Path("sql/0002_research_and_jobs.sql")
 
 
 def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
@@ -39,6 +40,11 @@ def initialize_database():
     with get_connection() as conn:
         with open(INIT_SQL_PATH) as f:
             conn.executescript(f.read())
+
+        # Run research and jobs migration if it exists
+        if RESEARCH_JOBS_SQL_PATH.exists():
+            with open(RESEARCH_JOBS_SQL_PATH) as f:
+                conn.executescript(f.read())
 
     # Seed with default agents
     ensure_seed_agents(["orchestrator", "researcher", "writer"])

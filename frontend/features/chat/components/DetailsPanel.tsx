@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import type { Agent, UIMessage } from '../types'
 import { timeAgo } from '../../../lib/time'
 import { EditAgentModal } from './EditAgentModal'
+import ResearchPanel from './ResearchPanel'
 
 export interface DetailsPanelProps {
   agents: Agent[]
@@ -38,40 +39,47 @@ export function DetailsPanel({ agents, activeAgentId, activeThreadId, messagesFo
           </button>
         )}
       </div>
-      <div className="p-3 space-y-4 overflow-auto">
-        <div>
-          <div className="text-sm text-gray-500 mb-2">Agent information</div>
-          <div className="text-sm space-y-2">
-            <div>
-              <span className="font-medium">Name:</span>{' '}
-              {activeAgent?.name || '—'}
+      <div className="flex-1 overflow-auto">
+        <div className="p-3 space-y-4">
+          <div>
+            <div className="text-sm text-gray-500 mb-2">Agent information</div>
+            <div className="text-sm space-y-2">
+              <div>
+                <span className="font-medium">Name:</span>{' '}
+                {activeAgent?.name || '—'}
+              </div>
+              <div>
+                <span className="font-medium">System Prompt:</span>
+                <div className="mt-1 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs leading-relaxed max-h-32 overflow-y-auto">
+                  {activeAgent?.system_prompt || 
+                    <span className="text-gray-500 italic">No system prompt set</span>
+                  }
+                </div>
+              </div>
             </div>
-            <div>
-              <span className="font-medium">System Prompt:</span>
-              <div className="mt-1 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs leading-relaxed max-h-32 overflow-y-auto">
-                {activeAgent?.system_prompt || 
-                  <span className="text-gray-500 italic">No system prompt set</span>
-                }
+          </div>
+          
+          <div>
+            <div className="text-sm text-gray-500 mb-2">Conversation details</div>
+            <div className="text-sm space-y-1">
+              <div>
+                <span className="font-medium">Thread ID:</span>{' '}
+                {activeThreadId ? `${activeThreadId.slice(-8)}` : '—'}
+              </div>
+              <div>
+                <span className="font-medium">Messages:</span> {messagesForActive.length}
+              </div>
+              <div>
+                <span className="font-medium">Last activity:</span>{' '}
+                {messagesForActive.length ? timeAgo(messagesForActive[messagesForActive.length - 1]?.created_at) : '—'}
               </div>
             </div>
           </div>
         </div>
         
-        <div>
-          <div className="text-sm text-gray-500 mb-2">Conversation details</div>
-          <div className="text-sm space-y-1">
-            <div>
-              <span className="font-medium">Thread ID:</span>{' '}
-              {activeThreadId ? `${activeThreadId.slice(-8)}` : '—'}
-            </div>
-            <div>
-              <span className="font-medium">Messages:</span> {messagesForActive.length}
-            </div>
-            <div>
-              <span className="font-medium">Last activity:</span>{' '}
-              {messagesForActive.length ? timeAgo(messagesForActive[messagesForActive.length - 1]?.created_at) : '—'}
-            </div>
-          </div>
+        {/* Research Panel */}
+        <div className="border-t">
+          <ResearchPanel activeAgent={activeAgent || null} />
         </div>
       </div>
       

@@ -24,6 +24,9 @@ dependencies = [
     "pydantic",
     "sse-starlette",
     "httpx",
+    "crawl4ai",
+    "chromadb",
+    "sentence-transformers",
 ]
 
 [project.optional-dependencies]
