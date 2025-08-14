@@ -1,0 +1,1 @@
+# Core package for find-me-a-job shared functionality

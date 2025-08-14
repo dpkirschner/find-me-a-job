@@ -1,0 +1,17 @@
+# Core package for find-me-a-job shared functionality
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "find-me-a-job-core"
+version = "0.1.0"
+description = "Shared core functionality for find-me-a-job"
+requires-python = ">=3.11"
+dependencies = [
+    # Add dependencies as needed
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["find_me_a_job*"]
