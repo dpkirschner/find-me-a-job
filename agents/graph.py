@@ -5,12 +5,12 @@ from typing import Annotated
 
 import requests
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_ollama import ChatOllama
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
-from agents.agent_tools import AGENT_TOOLS
+from agents.agent_tools import AGENT_TOOLS_MAP
+from agents.llm_factory import get_llm_with_tools
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -18,47 +18,20 @@ logger = get_logger(__name__)
 
 class GraphState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
-    agent_id: int | None
 
 
 async def llm_node(state: GraphState) -> dict:
-    """Node that uses ChatOllama with agent-specific system prompt and tool binding."""
+    """Node that uses ChatOllama with tool binding."""
     messages = state["messages"]
-    agent_id = state.get("agent_id")
     logger.debug(
-        f"LLM node processing {len(messages)} messages for agent {agent_id}, last: {messages[-1].content[:50] if messages else 'None'}..."
+        f"LLM node processing {len(messages)} messages, last: {messages[-1].content[:50] if messages else 'None'}..."
     )
 
     try:
-        # Get agent's system prompt if agent_id is provided
-        if agent_id:
-            from backend.db import get_agent
+        # Get configured LLM with tools from factory
+        llm_with_tools = get_llm_with_tools()
 
-            agent = get_agent(agent_id)
-            system_prompt = agent.get("system_prompt") if agent else None
-
-            # Prepend system message if system prompt exists and not already present
-            if system_prompt and (
-                not messages or not isinstance(messages[0], SystemMessage)
-            ):
-                system_message = SystemMessage(content=system_prompt)
-                messages = [system_message, *messages]
-                logger.debug(
-                    f"Added system prompt for agent {agent_id}: {system_prompt[:50]}..."
-                )
-
-        # Create LLM with tool binding
-        llm = ChatOllama(
-            model="gpt-oss"
-        )  # DAN-TEST extract this to a config file (huihui20b-ablit)
-
-        # Bind tools to the LLM - check if tools are available
-        if AGENT_TOOLS:
-            llm_with_tools = llm.bind_tools(AGENT_TOOLS)
-        else:
-            llm_with_tools = llm
-
-        logger.debug("ChatOllama instance created with tools, invoking LLM")
+        logger.debug("LLM instance created with tools, invoking LLM")
         response = await llm_with_tools.ainvoke(messages)
         logger.debug(f"LLM response received, content length: {len(response.content)}")
         return {"messages": [response]}
@@ -71,9 +44,8 @@ async def tool_node(state: GraphState) -> dict:
     """Node that executes tool calls from the LLM."""
     messages = state["messages"]
     last_message = messages[-1]
-    agent_id = state.get("agent_id")
 
-    logger.debug(f"Tool node processing tool calls for agent {agent_id}")
+    logger.debug("Tool node processing tool calls")
 
     tool_results = []
 
@@ -86,17 +58,9 @@ async def tool_node(state: GraphState) -> dict:
 
             logger.debug(f"Executing tool: {tool_name} with args: {tool_args}")
 
-            # Inject agent_id into tool calls if not present
-            if "agent_id" not in tool_args and agent_id:
-                tool_args["agent_id"] = agent_id
-
             try:
-                # Find and execute the tool
-                tool_function = None
-                for tool in AGENT_TOOLS:
-                    if tool.name == tool_name:
-                        tool_function = tool
-                        break
+                # Find and execute the tool using O(1) dictionary lookup
+                tool_function = AGENT_TOOLS_MAP.get(tool_name)
 
                 if tool_function:
                     # Execute the tool
@@ -163,20 +127,43 @@ async def stream_graph_events(
         agent_id: ID of the agent to use for system prompt
         historical_messages: Previous conversation messages for context
     """
-    # Combine historical messages with new user message
-    messages = historical_messages or []
-    current_message = HumanMessage(content=user_message)
-    all_messages = [*messages, current_message]
-
-    logger.info(
-        f"Starting graph streaming with {len(all_messages)} messages for agent {agent_id}, current: {user_message[:50]}..."
-    )
-    event_count = 0
-
     try:
+        # Fetch agent data upfront
+        from backend.db import get_agent
+
+        agent = get_agent(agent_id)
+        system_prompt = agent.get("system_prompt") if agent else None
+
+        # Prepare messages list with system prompt (if exists), historical messages, and new user message
+        messages = []
+
+        # Add system prompt if it exists and not already present in historical messages
+        if system_prompt and (
+            not historical_messages
+            or not isinstance(historical_messages[0], SystemMessage)
+        ):
+            system_message = SystemMessage(content=system_prompt)
+            messages.append(system_message)
+            logger.debug(
+                f"Added system prompt for agent {agent_id}: {system_prompt[:50]}..."
+            )
+
+        # Add historical messages
+        if historical_messages:
+            messages.extend(historical_messages)
+
+        # Add current user message
+        current_message = HumanMessage(content=user_message)
+        messages.append(current_message)
+
+        logger.info(
+            f"Starting graph streaming with {len(messages)} messages for agent {agent_id}, current: {user_message[:50]}..."
+        )
+        event_count = 0
+
         logger.debug("Beginning graph.astream_events")
-        # Include agent_id in initial state
-        initial_state = {"messages": all_messages, "agent_id": agent_id}
+        # Pass prepared messages to initial state (no longer need agent_id in state)
+        initial_state = {"messages": messages}
         async for event in graph.astream_events(initial_state, version="v2"):
             event_count += 1
             kind = event["event"]

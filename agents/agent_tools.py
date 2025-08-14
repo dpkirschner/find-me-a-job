@@ -43,3 +43,6 @@ def search_research(query: str, agent_id: int, limit: int = 3) -> str:
 
 # Export tools list for easy import
 AGENT_TOOLS = [research_url, search_research]
+
+# Create tools map for O(1) lookup by tool name
+AGENT_TOOLS_MAP = {tool.name: tool for tool in AGENT_TOOLS}

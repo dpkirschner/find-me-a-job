@@ -12,9 +12,8 @@ class TestLLMNode:
     """Unit tests for the llm_node function."""
 
     @pytest.mark.asyncio
-    @patch("agents.graph.AGENT_TOOLS", [])  # No tools for simpler testing
-    @patch("agents.graph.ChatOllama")
-    async def test_llm_node_returns_reply(self, mock_chat_ollama):
+    @patch("agents.graph.get_llm_with_tools")
+    async def test_llm_node_returns_reply(self, mock_get_llm):
         from unittest.mock import AsyncMock
 
         from langchain_core.messages import AIMessage, HumanMessage
@@ -22,50 +21,42 @@ class TestLLMNode:
         mock_llm_instance = AsyncMock()
         mock_response = AIMessage(content="This is a test response")
         mock_llm_instance.ainvoke.return_value = mock_response
-        mock_chat_ollama.return_value = mock_llm_instance
+        mock_get_llm.return_value = mock_llm_instance
 
-        # Create proper GraphState with messages list and no agent_id
+        # Create proper GraphState with messages list
         test_state = {
             "messages": [HumanMessage(content="Hello, how are you?")],
-            "agent_id": None,
         }
         result = await llm_node(test_state)
 
         assert "messages" in result
         assert len(result["messages"]) == 1
         assert result["messages"][0].content == "This is a test response"
-        mock_chat_ollama.assert_called_once_with(model="gpt-oss")
+        mock_get_llm.assert_called_once()
         mock_llm_instance.ainvoke.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("agents.graph.AGENT_TOOLS", [])  # No tools for simpler testing
-    @patch("agents.graph.ChatOllama")
-    @patch("backend.db.get_agent")
-    async def test_llm_node_with_system_prompt(self, mock_get_agent, mock_chat_ollama):
+    @patch("agents.graph.get_llm_with_tools")
+    async def test_llm_node_with_system_prompt(self, mock_get_llm):
         from unittest.mock import AsyncMock
 
         from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-        # Mock agent with system prompt
-        mock_get_agent.return_value = {
-            "id": 1,
-            "name": "test_agent",
-            "system_prompt": "You are a helpful assistant.",
-        }
-
         mock_llm_instance = AsyncMock()
         mock_response = AIMessage(content="I'm here to help!")
         mock_llm_instance.ainvoke.return_value = mock_response
-        mock_chat_ollama.return_value = mock_llm_instance
+        mock_get_llm.return_value = mock_llm_instance
 
-        # Create GraphState with agent_id but no existing system message
-        test_state = {"messages": [HumanMessage(content="Hello")], "agent_id": 1}
+        # Create GraphState with system message already included (as done by stream_graph_events)
+        test_state = {
+            "messages": [
+                SystemMessage(content="You are a helpful assistant."),
+                HumanMessage(content="Hello"),
+            ]
+        }
         result = await llm_node(test_state)
 
-        # Verify system prompt was fetched
-        mock_get_agent.assert_called_once_with(1)
-
-        # Verify LLM was called with system message prepended
+        # Verify LLM was called with both messages
         call_args = mock_llm_instance.ainvoke.call_args[0][0]  # messages argument
         assert len(call_args) == 2
         assert isinstance(call_args[0], SystemMessage)
@@ -76,40 +67,25 @@ class TestLLMNode:
         assert result["messages"][0].content == "I'm here to help!"
 
     @pytest.mark.asyncio
-    @patch("agents.graph.AGENT_TOOLS", [])  # No tools for simpler testing
-    @patch("agents.graph.ChatOllama")
-    @patch("backend.db.get_agent")
-    async def test_llm_node_with_existing_system_message(
-        self, mock_get_agent, mock_chat_ollama
-    ):
+    @patch("agents.graph.get_llm_with_tools")
+    async def test_llm_node_with_existing_system_message(self, mock_get_llm):
         from unittest.mock import AsyncMock
 
         from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-        # Mock agent with system prompt
-        mock_get_agent.return_value = {
-            "id": 1,
-            "name": "test_agent",
-            "system_prompt": "You are a helpful assistant.",
-        }
-
         mock_llm_instance = AsyncMock()
         mock_response = AIMessage(content="Response")
         mock_llm_instance.ainvoke.return_value = mock_response
-        mock_chat_ollama.return_value = mock_llm_instance
+        mock_get_llm.return_value = mock_llm_instance
 
-        # Create GraphState with agent_id and existing system message
+        # Create GraphState with existing system message (stream_graph_events preserves existing ones)
         test_state = {
             "messages": [
                 SystemMessage(content="Existing system prompt"),
                 HumanMessage(content="Hello"),
             ],
-            "agent_id": 1,
         }
-        await llm_node(test_state)
-
-        # Verify system prompt was fetched
-        mock_get_agent.assert_called_once_with(1)
+        result = await llm_node(test_state)
 
         # Verify LLM was called with original messages (no additional system message)
         call_args = mock_llm_instance.ainvoke.call_args[0][0]  # messages argument
@@ -120,82 +96,61 @@ class TestLLMNode:
         )  # Original system message preserved
         assert isinstance(call_args[1], HumanMessage)
         assert call_args[1].content == "Hello"
+        assert result["messages"][0].content == "Response"
 
     @pytest.mark.asyncio
-    @patch("agents.graph.AGENT_TOOLS", [])  # No tools for simpler testing
-    @patch("agents.graph.ChatOllama")
-    @patch("backend.db.get_agent")
-    async def test_llm_node_agent_not_found(self, mock_get_agent, mock_chat_ollama):
+    @patch("agents.graph.get_llm_with_tools")
+    async def test_llm_node_no_system_message(self, mock_get_llm):
         from unittest.mock import AsyncMock
 
         from langchain_core.messages import AIMessage, HumanMessage
 
-        # Mock agent not found
-        mock_get_agent.return_value = None
+        mock_llm_instance = AsyncMock()
+        mock_response = AIMessage(content="Response")
+        mock_llm_instance.ainvoke.return_value = mock_response
+        mock_get_llm.return_value = mock_llm_instance
+
+        # Create GraphState without system message (agent had no system prompt)
+        test_state = {"messages": [HumanMessage(content="Hello")]}
+        result = await llm_node(test_state)
+
+        # Verify LLM was called with original messages (no system message)
+        call_args = mock_llm_instance.ainvoke.call_args[0][0]  # messages argument
+        assert len(call_args) == 1
+        assert isinstance(call_args[0], HumanMessage)
+        assert call_args[0].content == "Hello"
+        assert result["messages"][0].content == "Response"
+
+    @pytest.mark.asyncio
+    @patch("agents.graph.get_llm_with_tools")
+    async def test_llm_node_agent_no_system_prompt(self, mock_get_llm):
+        from unittest.mock import AsyncMock
+
+        from langchain_core.messages import AIMessage, HumanMessage
 
         mock_llm_instance = AsyncMock()
         mock_response = AIMessage(content="Response")
         mock_llm_instance.ainvoke.return_value = mock_response
+        mock_get_llm.return_value = mock_llm_instance
 
-        mock_chat_ollama.return_value = mock_llm_instance
-
-        # Create GraphState with non-existent agent_id
-        test_state = {"messages": [HumanMessage(content="Hello")], "agent_id": 999}
-        await llm_node(test_state)
-
-        # Verify agent was looked up
-        mock_get_agent.assert_called_once_with(999)
+        # Create GraphState with agent that has no system prompt (stream_graph_events didn't add one)
+        test_state = {"messages": [HumanMessage(content="Hello")]}
+        result = await llm_node(test_state)
 
         # Verify LLM was called with original messages (no system message added)
         call_args = mock_llm_instance.ainvoke.call_args[0][0]  # messages argument
         assert len(call_args) == 1
         assert isinstance(call_args[0], HumanMessage)
         assert call_args[0].content == "Hello"
-
-    @pytest.mark.asyncio
-    @patch("agents.graph.AGENT_TOOLS", [])  # No tools for simpler testing
-    @patch("agents.graph.ChatOllama")
-    @patch("backend.db.get_agent")
-    async def test_llm_node_agent_no_system_prompt(
-        self, mock_get_agent, mock_chat_ollama
-    ):
-        from unittest.mock import AsyncMock
-
-        from langchain_core.messages import AIMessage, HumanMessage
-
-        # Mock agent with no system prompt
-        mock_get_agent.return_value = {
-            "id": 1,
-            "name": "test_agent",
-            "system_prompt": None,
-        }
-
-        mock_llm_instance = AsyncMock()
-        mock_response = AIMessage(content="Response")
-        mock_llm_instance.ainvoke.return_value = mock_response
-
-        mock_chat_ollama.return_value = mock_llm_instance
-
-        # Create GraphState with agent that has no system prompt
-        test_state = {"messages": [HumanMessage(content="Hello")], "agent_id": 1}
-        await llm_node(test_state)
-
-        # Verify agent was looked up
-        mock_get_agent.assert_called_once_with(1)
-
-        # Verify LLM was called with original messages (no system message added)
-        call_args = mock_llm_instance.ainvoke.call_args[0][0]  # messages argument
-        assert len(call_args) == 1
-        assert isinstance(call_args[0], HumanMessage)
-        assert call_args[0].content == "Hello"
+        assert result["messages"][0].content == "Response"
 
 
 class TestToolNode:
     """Test the tool execution node."""
 
     @pytest.mark.asyncio
-    @patch("agents.graph.AGENT_TOOLS")
-    async def test_tool_node_with_tool_calls(self, mock_agent_tools):
+    @patch("agents.graph.AGENT_TOOLS_MAP")
+    async def test_tool_node_with_tool_calls(self, mock_agent_tools_map):
         from langchain_core.messages import AIMessage, ToolMessage
 
         from agents.graph import tool_node
@@ -206,7 +161,7 @@ class TestToolNode:
         mock_tool.ainvoke = AsyncMock(return_value="Tool result")
         # Ensure acall doesn't exist so it uses ainvoke
         del mock_tool.acall
-        mock_agent_tools.__iter__.return_value = [mock_tool]
+        mock_agent_tools_map.get.return_value = mock_tool
 
         # Create AI message with tool calls
         ai_message = AIMessage(
@@ -216,7 +171,7 @@ class TestToolNode:
             ],
         )
 
-        test_state = {"messages": [ai_message], "agent_id": 1}
+        test_state = {"messages": [ai_message]}
 
         result = await tool_node(test_state)
 
@@ -226,8 +181,9 @@ class TestToolNode:
         assert result["messages"][0].content == "Tool result"
         assert result["messages"][0].tool_call_id == "call_123"
 
-        # Verify tool was called with injected agent_id
-        mock_tool.ainvoke.assert_called_once_with({"param": "value", "agent_id": 1})
+        # Verify tool was looked up and called
+        mock_agent_tools_map.get.assert_called_once_with("test_tool")
+        mock_tool.ainvoke.assert_called_once_with({"param": "value"})
 
     @pytest.mark.asyncio
     async def test_tool_node_no_tool_calls(self):
@@ -315,27 +271,18 @@ class TestStreamGraphEvents:
             }
 
         mock_graph.astream_events.return_value = mock_event_stream()
-        events = [
-            event async for event in stream_graph_events("Hello", 1)
-        ]  # Now requires agent_id
+        events = [event async for event in stream_graph_events("Hello", 1)]
 
         assert len(events) == 3  # 2 message events + 1 done event
         assert events[0] == {"event": "message", "data": "Hello"}
         assert events[1] == {"event": "message", "data": " world"}
         assert events[2] == {"event": "done", "data": "[DONE]"}
 
-        # Verify agent_id was passed in initial state
-        call_args = mock_graph.astream_events.call_args
-        initial_state = call_args[0][0]
-        assert initial_state["agent_id"] == 1
-
     @pytest.mark.asyncio
     @patch("agents.graph.graph")
     async def test_stream_graph_events_handles_other_errors(self, mock_graph):
         mock_graph.astream_events.side_effect = ValueError("Graph error")
-        events = [
-            event async for event in stream_graph_events("Hello", 1)
-        ]  # Now requires agent_id
+        events = [event async for event in stream_graph_events("Hello", 1)]
 
         assert len(events) == 2
         assert events[0]["event"] == "error"
@@ -349,9 +296,7 @@ class TestStreamGraphEvents:
         mock_graph.astream_events.side_effect = requests.exceptions.ConnectionError
 
         with pytest.raises(requests.exceptions.ConnectionError):
-            _ = [
-                event async for event in stream_graph_events("Hello", 1)
-            ]  # Now requires agent_id
+            _ = [event async for event in stream_graph_events("Hello", 1)]
 
     @pytest.mark.asyncio
     @patch("agents.graph.graph")
@@ -378,7 +323,6 @@ class TestStreamGraphEvents:
         # Verify historical messages were included in state
         call_args = mock_graph.astream_events.call_args
         initial_state = call_args[0][0]
-        assert initial_state["agent_id"] == 1
         assert len(initial_state["messages"]) == 3  # 2 historical + 1 new
         assert initial_state["messages"][0].content == "Previous question"
         assert initial_state["messages"][1].content == "Previous answer"
